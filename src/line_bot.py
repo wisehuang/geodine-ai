@@ -169,7 +169,7 @@ def handle_location_message(event):
     )
 
 def search_and_push(query_params, user_id):
-    """Search for restaurants and push results to user"""
+    """Search for restaurants and push only the first result to user"""
     try:
         # Search for restaurants without sending progress message
         results = search_restaurants(query_params)
@@ -182,13 +182,17 @@ def search_and_push(query_params, user_id):
             )
             return
         
-        # Convert results to LINE Flex Message
-        flex_message = create_restaurant_flex_message(results)
+        # Only take the first result
+        first_restaurant = results[0]
+        print(f"Sending first restaurant result: {first_restaurant['name']}")
         
-        # Use push message to send response - simplified to just one message with the carousel
+        # Create a single restaurant message instead of a carousel
+        restaurant_message = create_single_restaurant_message(first_restaurant)
+        
+        # Use push message to send response with just the first restaurant
         line_bot_api.push_message(
             user_id,
-            FlexSendMessage(alt_text=f"Found {len(results)} restaurants", contents=flex_message)
+            FlexSendMessage(alt_text=f"Found restaurant: {first_restaurant['name']}", contents=restaurant_message)
         )
     except Exception as e:
         print(f"Error searching restaurants: {str(e)}")
@@ -197,81 +201,80 @@ def search_and_push(query_params, user_id):
             TextSendMessage(text=f"I encountered an error while searching: {str(e)}")
         )
 
-def create_restaurant_flex_message(restaurants):
-    """Convert restaurant information to LINE Flex Message format"""
-    # Implementation of Flex Message generation logic
-    # See LINE official documentation for reference
-    
-    # Simplified version of Flex Message
-    contents = {
-        "type": "carousel",
-        "contents": []
+def create_single_restaurant_message(restaurant):
+    """Create a Flex Message for a single restaurant result"""
+    bubble = {
+        "type": "bubble",
+        "hero": {
+            "type": "image",
+            "url": restaurant.get("photo_url", "https://via.placeholder.com/300x200"),
+            "size": "full",
+            "aspectRatio": "20:13",
+            "aspectMode": "cover"
+        },
+        "body": {
+            "type": "box",
+            "layout": "vertical",
+            "contents": [
+                {
+                    "type": "text",
+                    "text": restaurant["name"],
+                    "weight": "bold",
+                    "size": "xl"
+                },
+                {
+                    "type": "box",
+                    "layout": "vertical",
+                    "margin": "lg",
+                    "contents": [
+                        {
+                            "type": "box",
+                            "layout": "baseline",
+                            "contents": [
+                                {
+                                    "type": "text",
+                                    "text": f"Rating: {restaurant.get('rating', 'N/A')}"
+                                }
+                            ]
+                        },
+                        {
+                            "type": "box",
+                            "layout": "baseline",
+                            "contents": [
+                                {
+                                    "type": "text",
+                                    "text": f"Address: {restaurant.get('address', 'N/A')}"
+                                }
+                            ]
+                        },
+                        {
+                            "type": "box",
+                            "layout": "baseline",
+                            "contents": [
+                                {
+                                    "type": "text",
+                                    "text": f"Price level: {restaurant.get('price_level', 'N/A')}"
+                                }
+                            ]
+                        }
+                    ]
+                }
+            ]
+        },
+        "footer": {
+            "type": "box",
+            "layout": "vertical",
+            "contents": [
+                {
+                    "type": "button",
+                    "action": {
+                        "type": "uri",
+                        "label": "Open in Google Maps",
+                        "uri": f"https://www.google.com/maps/place/?q=place_id:{restaurant['place_id']}"
+                    }
+                }
+            ]
+        }
     }
     
-    for restaurant in restaurants:
-        bubble = {
-            "type": "bubble",
-            "hero": {
-                "type": "image",
-                "url": restaurant.get("photo_url", "https://via.placeholder.com/300x200"),
-                "size": "full",
-                "aspectRatio": "20:13",
-                "aspectMode": "cover"
-            },
-            "body": {
-                "type": "box",
-                "layout": "vertical",
-                "contents": [
-                    {
-                        "type": "text",
-                        "text": restaurant["name"],
-                        "weight": "bold",
-                        "size": "xl"
-                    },
-                    {
-                        "type": "box",
-                        "layout": "vertical",
-                        "margin": "lg",
-                        "contents": [
-                            {
-                                "type": "box",
-                                "layout": "baseline",
-                                "contents": [
-                                    {
-                                        "type": "text",
-                                        "text": f"Rating: {restaurant.get('rating', 'N/A')}"
-                                    }
-                                ]
-                            },
-                            {
-                                "type": "box",
-                                "layout": "baseline",
-                                "contents": [
-                                    {
-                                        "type": "text",
-                                        "text": f"Distance: {restaurant.get('distance', 'N/A')} meters"
-                                    }
-                                ]
-                            }
-                        ]
-                    }
-                ]
-            },
-            "footer": {
-                "type": "box",
-                "layout": "vertical",
-                "contents": [
-                    {
-                        "type": "button",
-                        "action": {
-                            "type": "uri",
-                            "label": "Open in Google Maps",
-                            "uri": f"https://www.google.com/maps/place/?q=place_id:{restaurant['place_id']}"
-                        }
-                    }
-                ]
-            }
-        }
-        contents["contents"].append(bubble)
-    
-    return contents
+    return bubble
