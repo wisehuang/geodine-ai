@@ -72,7 +72,7 @@ def handle_text_message(event):
         # Use the most recent location with default parameters
         recent_location = saved_locations[0]
         query_params = {
-            "location": (recent_location['latitude'], recent_location['longitude']),
+            "location": {"lat": recent_location['latitude'], "lng": recent_location['longitude']},
             "radius": 1000,
             "type": "restaurant"
         }
@@ -101,11 +101,8 @@ def handle_text_message(event):
         if saved_locations and len(saved_locations) > 0:
             # Use the most recent saved location
             recent_location = saved_locations[0]
-            location = (recent_location['latitude'], recent_location['longitude'])
-            query_params['location'] = location
-            
-            # No need to send a separate message about using saved location
-            # Just include it in the search and reply
+            # Format location correctly for Google Maps API
+            query_params['location'] = {"lat": recent_location['latitude'], "lng": recent_location['longitude']}
         else:
             # If no saved locations, ask user to share location
             line_bot_api.reply_message(

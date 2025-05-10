@@ -2,7 +2,7 @@ import os
 import googlemaps
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from typing import List, Tuple, Dict, Any, Optional
+from typing import List, Tuple, Dict, Any, Optional, Union
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -18,7 +18,7 @@ gmaps = googlemaps.Client(key=os.getenv("GOOGLE_MAPS_API_KEY"))
 router = APIRouter(prefix="/restaurants", tags=["Restaurant Finder"])
 
 class RestaurantSearchRequest(BaseModel):
-    location: Tuple[float, float]  # (latitude, longitude)
+    location: Union[Tuple[float, float], Dict[str, float]]  # (latitude, longitude) or {"lat": lat, "lng": lng}
     keyword: Optional[str] = None
     radius: int = 1000
     type: str = "restaurant"
@@ -66,6 +66,20 @@ def search_restaurants(params):
     """
     # Prepare Google Maps API parameters
     location = params.get("location")
+    
+    # Convert location to the correct format if needed
+    if location:
+        # If location is a tuple or list, convert to dict format
+        if isinstance(location, (tuple, list)) and len(location) == 2:
+            location = {"lat": location[0], "lng": location[1]}
+        # If location is already a dict, ensure it has lat and lng keys
+        elif isinstance(location, dict) and "lat" in location and "lng" in location:
+            pass
+        else:
+            raise ValueError(f"Invalid location format: {location}. Must be (lat, lng) tuple or {{lat, lng}} dict")
+    else:
+        raise ValueError("Location parameter is required")
+        
     api_params = {
         "location": location,
         "radius": params.get("radius", 1000),
