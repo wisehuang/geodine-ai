@@ -1,7 +1,8 @@
 import os
+import time
 from fastapi import APIRouter, Request, HTTPException, Depends, Header
 from linebot import LineBotApi, WebhookHandler
-from linebot.exceptions import InvalidSignatureError
+from linebot.exceptions import InvalidSignatureError, LineBotApiError
 from linebot.models import (
     MessageEvent, TextMessage, LocationMessage, 
     TextSendMessage, FlexSendMessage
@@ -27,6 +28,9 @@ handler = WebhookHandler(os.getenv("LINE_CHANNEL_SECRET"))
 # Flag to control whether to use AI for parsing
 USE_AI_PARSING = os.getenv("USE_AI_PARSING", "False").lower() == "true"
 
+# Store event timestamps to avoid processing duplicates
+processed_events = {}
+
 router = APIRouter(prefix="/line", tags=["LINE Bot"])
 
 class LineWebhookRequest(BaseModel):
@@ -42,19 +46,71 @@ async def line_webhook(
     Handle webhook events from the LINE platform
     """
     body = await request.body()
+    body_str = body.decode("utf-8")
     
     try:
-        handler.handle(body.decode("utf-8"), x_line_signature)
+        # Print webhook event for debugging
+        print(f"Received LINE webhook: {body_str}")
+        handler.handle(body_str, x_line_signature)
     except InvalidSignatureError:
         raise HTTPException(status_code=400, detail="Invalid LINE signature")
+    except Exception as e:
+        print(f"Error handling webhook: {str(e)}")
+        # Don't raise exception here to always return 200 OK to LINE
     
     return {"status": "OK"}
+
+def safe_reply_or_push(event, messages):
+    """
+    Attempt to reply to user, and if that fails, send a push message instead
+    """
+    user_id = event.source.user_id
+    reply_token = event.reply_token
+    
+    # Check if we've already processed this event recently
+    event_id = getattr(event, 'id', None) or getattr(event.message, 'id', None)
+    current_time = time.time()
+    
+    if event_id and event_id in processed_events:
+        # If we've seen this event in the last 5 minutes, skip it
+        if current_time - processed_events[event_id] < 300:  # 5 minutes
+            print(f"Skipping duplicate event: {event_id}")
+            return
+    
+    if event_id:
+        processed_events[event_id] = current_time
+    
+    # Clean up old events (older than 5 minutes)
+    for eid in list(processed_events.keys()):
+        if current_time - processed_events[eid] > 300:
+            del processed_events[eid]
+    
+    try:
+        # Try to use reply token first
+        line_bot_api.reply_message(reply_token, messages)
+        print(f"Successfully replied to message {event_id}")
+    except LineBotApiError as e:
+        # If reply token is invalid, use push message
+        if "Invalid reply token" in str(e):
+            print(f"Reply token invalid, using push message instead: {str(e)}")
+            try:
+                # If multiple messages, send them one by one
+                if isinstance(messages, list):
+                    for message in messages:
+                        line_bot_api.push_message(user_id, message)
+                else:
+                    line_bot_api.push_message(user_id, messages)
+                print(f"Successfully pushed message to {user_id}")
+            except Exception as push_error:
+                print(f"Error sending push message: {str(push_error)}")
+        else:
+            # For other LINE API errors, log them
+            print(f"LINE API Error: {str(e)}")
 
 @handler.add(MessageEvent, message=TextMessage)
 def handle_text_message(event):
     """Handle text messages, parse user requests"""
     user_id = event.source.user_id
-    reply_token = event.reply_token
     text = event.message.text
     
     # Check if text is "Any" (user wants generic recommendations)
@@ -63,8 +119,8 @@ def handle_text_message(event):
         location = get_user_location_for_search(user_id)
         
         if not location:
-            line_bot_api.reply_message(
-                reply_token,
+            safe_reply_or_push(
+                event,
                 TextSendMessage(text="Please share your location first so I can find restaurants nearby.")
             )
             return
@@ -76,9 +132,9 @@ def handle_text_message(event):
             "type": "restaurant"
         }
         
-        # First acknowledge the request with a reply
-        line_bot_api.reply_message(
-            reply_token,
+        # Inform user and search
+        safe_reply_or_push(
+            event,
             TextSendMessage(text="Looking for restaurants near your location...")
         )
         
@@ -107,23 +163,23 @@ def handle_text_message(event):
             print(f"Using saved location: {location}")
         else:
             # If no location, ask user to share location
-            line_bot_api.reply_message(
-                reply_token,
+            safe_reply_or_push(
+                event,
                 TextSendMessage(text="Please share your location so I can find restaurants nearby")
             )
             return
     
     # Ensure location is not None
     if "location" not in query_params or not query_params["location"]:
-        line_bot_api.reply_message(
-            reply_token,
+        safe_reply_or_push(
+            event,
             TextSendMessage(text="I couldn't determine your location. Please share your location and try again.")
         )
         return
     
-    # First acknowledge the request with a reply
-    line_bot_api.reply_message(
-        reply_token,
+    # First acknowledge the request
+    safe_reply_or_push(
+        event,
         TextSendMessage(text="Searching for restaurants matching your criteria...")
     )
     
@@ -137,7 +193,6 @@ def handle_text_message(event):
 def handle_location_message(event):
     """Handle location messages, save to DB and ask for restaurant preferences"""
     user_id = event.source.user_id
-    reply_token = event.reply_token
     latitude = event.message.latitude
     longitude = event.message.longitude
     address = event.message.address if hasattr(event.message, 'address') else None
@@ -162,9 +217,9 @@ def handle_location_message(event):
         "- Or just say \"Any\" for general recommendations"
     ]
     
-    # Use reply token to send response
-    line_bot_api.reply_message(
-        reply_token,
+    # Use safe reply method
+    safe_reply_or_push(
+        event,
         TextSendMessage(text="\n".join(preference_questions))
     )
 
