@@ -92,14 +92,19 @@ def handle_text_message(event):
     else:
         query_params = parse_user_request(text)
     
+    # Debug log to help diagnose issues
+    print(f"Query params after parsing: {query_params}")
+    
     # If no location in parameters, check if user has saved location
-    if "location" not in query_params and "location_name" not in query_params:
+    if "location" not in query_params or not query_params["location"]:
         # Get user's location directly in the correct format
         location = get_user_location_for_search(user_id)
+        print(f"Retrieved location from database: {location}")
         
         if location:
             # Use the stored location
             query_params['location'] = location
+            print(f"Using saved location: {location}")
         else:
             # If no location, ask user to share location
             line_bot_api.reply_message(
@@ -108,11 +113,22 @@ def handle_text_message(event):
             )
             return
     
+    # Ensure location is not None
+    if "location" not in query_params or not query_params["location"]:
+        line_bot_api.reply_message(
+            reply_token,
+            TextSendMessage(text="I couldn't determine your location. Please share your location and try again.")
+        )
+        return
+    
     # First acknowledge the request with a reply
     line_bot_api.reply_message(
         reply_token,
         TextSendMessage(text="Searching for restaurants matching your criteria...")
     )
+    
+    # Final debug log before search
+    print(f"Final query params before search: {query_params}")
     
     # Then search and push results
     search_and_push(query_params, user_id)

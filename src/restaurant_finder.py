@@ -64,21 +64,35 @@ def search_restaurants(params):
     """
     Search for restaurants using Google Maps Places API
     """
+    # Debug log to help diagnose issues
+    print(f"Search params received: {params}")
+    
     # Prepare Google Maps API parameters
     location = params.get("location")
     
+    # Validate location parameter
+    if not location:
+        raise ValueError("Location parameter is required and cannot be None")
+    
     # Convert location to the correct format if needed
-    if location:
-        # If location is a tuple or list, convert to dict format
-        if isinstance(location, (tuple, list)) and len(location) == 2:
-            location = {"lat": location[0], "lng": location[1]}
-        # If location is already a dict, ensure it has lat and lng keys
-        elif isinstance(location, dict) and "lat" in location and "lng" in location:
-            pass
+    if isinstance(location, (tuple, list)) and len(location) == 2:
+        # Format: (lat, lng) tuple or list
+        location = {"lat": float(location[0]), "lng": float(location[1])}
+        print(f"Converted tuple location to: {location}")
+    elif isinstance(location, dict):
+        # If location is a dict but doesn't have lat/lng, check for latitude/longitude keys
+        if 'lat' not in location or 'lng' not in location:
+            if 'latitude' in location and 'longitude' in location:
+                location = {"lat": float(location['latitude']), "lng": float(location['longitude'])}
+                print(f"Converted dictionary with latitude/longitude to: {location}")
+            else:
+                raise ValueError(f"Invalid location dictionary format: {location}. Must contain 'lat' and 'lng' keys or 'latitude' and 'longitude' keys")
         else:
-            raise ValueError(f"Invalid location format: {location}. Must be (lat, lng) tuple or {{lat, lng}} dict")
+            # Ensure values are float type
+            location = {"lat": float(location['lat']), "lng": float(location['lng'])}
+            print(f"Using location: {location}")
     else:
-        raise ValueError("Location parameter is required")
+        raise ValueError(f"Invalid location format: {location} (type: {type(location)}). Must be (lat, lng) tuple or {{lat, lng}} dict")
         
     api_params = {
         "location": location,
@@ -95,8 +109,14 @@ def search_restaurants(params):
         api_params["minprice"] = params["price_level"]
         api_params["maxprice"] = params["price_level"]
     
+    # Debug log for API call
+    print(f"Calling Google Maps API with params: {api_params}")
+    
     # Call Google Maps Places API
     places_result = gmaps.places_nearby(**api_params)
+    
+    # Debug log for results
+    print(f"Got {len(places_result.get('results', []))} results from Google Maps API")
     
     # Process results
     restaurants = []
