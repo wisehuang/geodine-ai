@@ -11,7 +11,7 @@ from typing import Optional, Dict, Any, List
 
 from src.restaurant_finder import search_restaurants
 from src.utils import parse_user_request, parse_user_request_with_ai
-from src.database import init_db, save_user_location, get_user_locations
+from src.database import init_db, save_user_location, get_user_location, get_user_location_for_search
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -59,20 +59,19 @@ def handle_text_message(event):
     
     # Check if text is "Any" (user wants generic recommendations)
     if text.lower() in ["any", "anything", "general"]:
-        # Get user's most recent location
-        saved_locations = get_user_locations(user_id, limit=1)
+        # Get user's location directly in the correct format for Google Maps API
+        location = get_user_location_for_search(user_id)
         
-        if not saved_locations:
+        if not location:
             line_bot_api.reply_message(
                 reply_token,
                 TextSendMessage(text="Please share your location first so I can find restaurants nearby.")
             )
             return
             
-        # Use the most recent location with default parameters
-        recent_location = saved_locations[0]
+        # Use the user's location with default parameters
         query_params = {
-            "location": {"lat": recent_location['latitude'], "lng": recent_location['longitude']},
+            "location": location,
             "radius": 1000,
             "type": "restaurant"
         }
@@ -93,18 +92,16 @@ def handle_text_message(event):
     else:
         query_params = parse_user_request(text)
     
-    # If no location in parameters, check if user has saved locations
+    # If no location in parameters, check if user has saved location
     if "location" not in query_params and "location_name" not in query_params:
-        # Get user's saved locations
-        saved_locations = get_user_locations(user_id, limit=1)
+        # Get user's location directly in the correct format
+        location = get_user_location_for_search(user_id)
         
-        if saved_locations and len(saved_locations) > 0:
-            # Use the most recent saved location
-            recent_location = saved_locations[0]
-            # Format location correctly for Google Maps API
-            query_params['location'] = {"lat": recent_location['latitude'], "lng": recent_location['longitude']}
+        if location:
+            # Use the stored location
+            query_params['location'] = location
         else:
-            # If no saved locations, ask user to share location
+            # If no location, ask user to share location
             line_bot_api.reply_message(
                 reply_token,
                 TextSendMessage(text="Please share your location so I can find restaurants nearby")
@@ -131,16 +128,7 @@ def handle_location_message(event):
     
     print(f"Received location from user {user_id}: {latitude}, {longitude}")
     
-    # Log the location data for debugging
-    location_data = {
-        "user_id": user_id,
-        "latitude": latitude,
-        "longitude": longitude,
-        "address": address
-    }
-    print(f"Location data: {location_data}")
-    
-    # Save user location to database
+    # Save user location to database (will update if exists)
     location_id = save_user_location(
         line_user_id=user_id,
         latitude=latitude,
