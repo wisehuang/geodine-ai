@@ -4,5 +4,5 @@ python-dotenv>=1.0.0
 line-bot-sdk>=3.5.0
 googlemaps>=4.10.0
 pydantic>=2.4.2
-fastapi-mcp>=0.5.1
+fastapi-mcp>=0.3.3
 openai>=1.6.0

@@ -11,10 +11,14 @@ from typing import Optional, Dict, Any, List
 
 from src.restaurant_finder import search_restaurants
 from src.utils import parse_user_request, parse_user_request_with_ai
+from src.database import init_db, save_user_location, get_user_locations
 from dotenv import load_dotenv
 
 # Load environment variables
 load_dotenv()
+
+# Initialize database
+init_db()
 
 # Set up LINE Bot API
 line_bot_api = LineBotApi(os.getenv("LINE_CHANNEL_ACCESS_TOKEN"))
@@ -50,7 +54,31 @@ async def line_webhook(
 def handle_text_message(event):
     """Handle text messages, parse user requests"""
     user_id = event.source.user_id
+    reply_token = event.reply_token
     text = event.message.text
+    
+    # Check if text is "Any" (user wants generic recommendations)
+    if text.lower() in ["any", "anything", "general"]:
+        # Get user's most recent location
+        saved_locations = get_user_locations(user_id, limit=1)
+        
+        if not saved_locations:
+            line_bot_api.reply_message(
+                reply_token,
+                TextSendMessage(text="Please share your location first so I can find restaurants nearby.")
+            )
+            return
+            
+        # Use the most recent location with default parameters
+        recent_location = saved_locations[0]
+        query_params = {
+            "location": (recent_location['latitude'], recent_location['longitude']),
+            "radius": 1000,
+            "type": "restaurant"
+        }
+        
+        search_and_reply(query_params, reply_token)
+        return
     
     # Parse user request (with AI if enabled)
     if USE_AI_PARSING:
@@ -58,48 +86,111 @@ def handle_text_message(event):
     else:
         query_params = parse_user_request(text)
     
+    # If no location in parameters, check if user has saved locations
     if "location" not in query_params and "location_name" not in query_params:
-        # If location information is missing, ask the user to provide location
-        line_bot_api.reply_message(
-            event.reply_token,
-            TextSendMessage(text="Please share your location so I can find restaurants nearby")
-        )
-        return
+        # Get user's saved locations
+        saved_locations = get_user_locations(user_id, limit=1)
+        
+        if saved_locations and len(saved_locations) > 0:
+            # Use the most recent saved location
+            recent_location = saved_locations[0]
+            location = (recent_location['latitude'], recent_location['longitude'])
+            query_params['location'] = location
+            
+            # No need to send a separate message about using saved location
+            # Just include it in the search and reply
+        else:
+            # If no saved locations, ask user to share location
+            line_bot_api.reply_message(
+                reply_token,
+                TextSendMessage(text="Please share your location so I can find restaurants nearby")
+            )
+            return
     
-    # If location information is available, search for restaurants
-    results = search_restaurants(query_params)
-    
-    # Convert results to LINE Flex Message
-    flex_message = create_restaurant_flex_message(results)
-    
-    line_bot_api.reply_message(
-        event.reply_token,
-        FlexSendMessage(alt_text="Restaurant Recommendations", contents=flex_message)
-    )
+    # Search and reply with results
+    search_and_reply(query_params, reply_token)
 
 @handler.add(MessageEvent, message=LocationMessage)
 def handle_location_message(event):
-    """Handle location messages, search for nearby restaurants"""
+    """Handle location messages, save to DB and ask for restaurant preferences"""
     user_id = event.source.user_id
+    reply_token = event.reply_token
     latitude = event.message.latitude
     longitude = event.message.longitude
+    address = event.message.address if hasattr(event.message, 'address') else None
     
-    # Search for nearby restaurants with default parameters
-    query_params = {
-        "location": (latitude, longitude),
-        "radius": 1000,  # Default search radius: 1 kilometer
-        "type": "restaurant"
+    print(f"Received location from user {user_id}: {latitude}, {longitude}")
+    
+    # Log the location data for debugging
+    location_data = {
+        "user_id": user_id,
+        "latitude": latitude,
+        "longitude": longitude,
+        "address": address
     }
+    print(f"Location data: {location_data}")
     
-    results = search_restaurants(query_params)
-    
-    # Convert results to LINE Flex Message
-    flex_message = create_restaurant_flex_message(results)
-    
-    line_bot_api.reply_message(
-        event.reply_token,
-        FlexSendMessage(alt_text="Nearby Restaurants", contents=flex_message)
+    # Save user location to database
+    location_id = save_user_location(
+        line_user_id=user_id,
+        latitude=latitude,
+        longitude=longitude,
+        address=address
     )
+    
+    # Ask user about restaurant preferences
+    preference_questions = [
+        "I've saved your location! What type of restaurant are you looking for?",
+        "For example, you can say:",
+        "- \"Japanese food\"",
+        "- \"Affordable Italian restaurants\"", 
+        "- \"Vegetarian restaurants open now\"",
+        "- Or just say \"Any\" for general recommendations"
+    ]
+    
+    # Use reply token to send response
+    line_bot_api.reply_message(
+        reply_token,
+        TextSendMessage(text="\n".join(preference_questions))
+    )
+
+def search_and_reply(query_params, reply_token):
+    """Search for restaurants and reply with results"""
+    try:
+        # Inform user that search is in progress
+        search_text = "Searching for restaurants"
+        if "keyword" in query_params:
+            search_text += f" ({query_params['keyword']})"
+        search_text += "..."
+        
+        # Search for restaurants
+        results = search_restaurants(query_params)
+        
+        # If no results found
+        if not results or len(results) == 0:
+            line_bot_api.reply_message(
+                reply_token,
+                TextSendMessage(text="Sorry, I couldn't find any restaurants matching your criteria.")
+            )
+            return
+        
+        # Convert results to LINE Flex Message
+        flex_message = create_restaurant_flex_message(results)
+        
+        # Use reply token to send response
+        line_bot_api.reply_message(
+            reply_token,
+            [
+                TextSendMessage(text=f"Found {len(results)} restaurants for you:"),
+                FlexSendMessage(alt_text="Restaurant Recommendations", contents=flex_message)
+            ]
+        )
+    except Exception as e:
+        print(f"Error searching restaurants: {str(e)}")
+        line_bot_api.reply_message(
+            reply_token,
+            TextSendMessage(text=f"I encountered an error while searching: {str(e)}")
+        )
 
 def create_restaurant_flex_message(restaurants):
     """Convert restaurant information to LINE Flex Message format"""
