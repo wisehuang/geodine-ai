@@ -1,0 +1,63 @@
+@startuml GeoDine-AI Sequence Diagram
+
+actor User
+participant "LINE App" as LINE
+participant "LINE Bot\n(line_bot.py)" as Bot
+participant "Restaurant Finder\n(restaurant_finder.py)" as Finder
+participant "Utils\n(utils.py)" as Utils
+participant "Google Maps API" as Google
+
+== Text Message Flow ==
+User -> LINE: Send text message\n(e.g., "Find Japanese food near Central Park")
+LINE -> Bot: Webhook event (MessageEvent with TextMessage)
+activate Bot
+
+Bot -> Utils: parse_user_request(text)
+activate Utils
+Utils --> Bot: query_params
+deactivate Utils
+
+alt location not found in query_params
+    Bot -> LINE: "Please share your location"
+    LINE -> User: Location request
+else location found in query_params
+    Bot -> Finder: search_restaurants(query_params)
+    activate Finder
+    
+    Finder -> Google: places_nearby API request
+    activate Google
+    Google --> Finder: places result
+    deactivate Google
+    
+    Finder --> Bot: restaurant results
+    deactivate Finder
+    
+    Bot -> Bot: create_restaurant_flex_message(results)
+    Bot -> LINE: FlexSendMessage with restaurant data
+    LINE -> User: Restaurant recommendations carousel
+end
+deactivate Bot
+
+== Location Message Flow ==
+User -> LINE: Share location
+LINE -> Bot: Webhook event (MessageEvent with LocationMessage)
+activate Bot
+
+Bot -> Bot: Extract latitude/longitude
+Bot -> Finder: search_restaurants(location, radius, type)
+activate Finder
+
+Finder -> Google: places_nearby API request
+activate Google
+Google --> Finder: places result
+deactivate Google
+
+Finder --> Bot: restaurant results
+deactivate Finder
+
+Bot -> Bot: create_restaurant_flex_message(results)
+Bot -> LINE: FlexSendMessage with nearby restaurants
+LINE -> User: Nearby restaurants carousel
+deactivate Bot
+
+@enduml
