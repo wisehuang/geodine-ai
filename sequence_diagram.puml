@@ -5,6 +5,7 @@ participant "LINE App" as LINE
 participant "LINE Bot\n(line_bot.py)" as Bot
 participant "Restaurant Finder\n(restaurant_finder.py)" as Finder
 participant "Utils\n(utils.py)" as Utils
+participant "OpenAI API" as OpenAI
 participant "Google Maps API" as Google
 
 == Text Message Flow ==
@@ -12,10 +13,23 @@ User -> LINE: Send text message\n(e.g., "Find Japanese food near Central Park")
 LINE -> Bot: Webhook event (MessageEvent with TextMessage)
 activate Bot
 
-Bot -> Utils: parse_user_request(text)
-activate Utils
-Utils --> Bot: query_params
-deactivate Utils
+alt USE_AI_PARSING is true
+    Bot -> Utils: parse_user_request_with_ai(text)
+    activate Utils
+    
+    Utils -> OpenAI: Request text analysis\n(GPT-4o model)
+    activate OpenAI
+    OpenAI --> Utils: Structured JSON response\n(cuisine, location, price, etc.)
+    deactivate OpenAI
+    
+    Utils --> Bot: query_params
+    deactivate Utils
+else USE_AI_PARSING is false
+    Bot -> Utils: parse_user_request(text)
+    activate Utils
+    Utils --> Bot: query_params
+    deactivate Utils
+end
 
 alt location not found in query_params
     Bot -> LINE: "Please share your location"
