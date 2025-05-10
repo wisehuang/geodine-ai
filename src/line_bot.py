@@ -77,7 +77,14 @@ def handle_text_message(event):
             "type": "restaurant"
         }
         
-        search_and_reply(query_params, reply_token)
+        # First acknowledge the request with a reply
+        line_bot_api.reply_message(
+            reply_token,
+            TextSendMessage(text="Looking for restaurants near your location...")
+        )
+        
+        # Then search and push results
+        search_and_push(query_params, user_id)
         return
     
     # Parse user request (with AI if enabled)
@@ -107,8 +114,14 @@ def handle_text_message(event):
             )
             return
     
-    # Search and reply with results
-    search_and_reply(query_params, reply_token)
+    # First acknowledge the request with a reply
+    line_bot_api.reply_message(
+        reply_token,
+        TextSendMessage(text="Searching for restaurants matching your criteria...")
+    )
+    
+    # Then search and push results
+    search_and_push(query_params, user_id)
 
 @handler.add(MessageEvent, message=LocationMessage)
 def handle_location_message(event):
@@ -154,22 +167,16 @@ def handle_location_message(event):
         TextSendMessage(text="\n".join(preference_questions))
     )
 
-def search_and_reply(query_params, reply_token):
-    """Search for restaurants and reply with results"""
+def search_and_push(query_params, user_id):
+    """Search for restaurants and push results to user"""
     try:
-        # Inform user that search is in progress
-        search_text = "Searching for restaurants"
-        if "keyword" in query_params:
-            search_text += f" ({query_params['keyword']})"
-        search_text += "..."
-        
-        # Search for restaurants
+        # Search for restaurants without sending progress message
         results = search_restaurants(query_params)
         
         # If no results found
         if not results or len(results) == 0:
-            line_bot_api.reply_message(
-                reply_token,
+            line_bot_api.push_message(
+                user_id,
                 TextSendMessage(text="Sorry, I couldn't find any restaurants matching your criteria.")
             )
             return
@@ -177,18 +184,15 @@ def search_and_reply(query_params, reply_token):
         # Convert results to LINE Flex Message
         flex_message = create_restaurant_flex_message(results)
         
-        # Use reply token to send response
-        line_bot_api.reply_message(
-            reply_token,
-            [
-                TextSendMessage(text=f"Found {len(results)} restaurants for you:"),
-                FlexSendMessage(alt_text="Restaurant Recommendations", contents=flex_message)
-            ]
+        # Use push message to send response - simplified to just one message with the carousel
+        line_bot_api.push_message(
+            user_id,
+            FlexSendMessage(alt_text=f"Found {len(results)} restaurants", contents=flex_message)
         )
     except Exception as e:
         print(f"Error searching restaurants: {str(e)}")
-        line_bot_api.reply_message(
-            reply_token,
+        line_bot_api.push_message(
+            user_id,
             TextSendMessage(text=f"I encountered an error while searching: {str(e)}")
         )
 
