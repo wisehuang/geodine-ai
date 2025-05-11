@@ -284,8 +284,13 @@ def parse_user_request_with_ai(text: str) -> Dict[str, Any]:
                     break
                     
             # Set the appropriate type based on the keyword
-            if any(drink_term in keyword_lower for drink_term in ["cafe", "coffee", "bubble tea", "boba", "milk tea", "bar", "juice", "咖啡", "奶茶", "珍珠", "酒吧", "果汁"]):
+            if any(drink_term in keyword_lower for drink_term in ["cafe", "coffee", "咖啡"]):
                 result["type"] = "cafe"
+            elif any(drink_term in keyword_lower for drink_term in ["bubble tea", "boba", "milk tea", "奶茶", "珍珠", "手搖", "tea", "茶"]):
+                # For bubble tea shops and tea houses
+                result["type"] = "tea_house"
+            elif any(drink_term in keyword_lower for drink_term in ["bar", "juice", "酒吧", "果汁"]):
+                result["type"] = "bar"
             elif any(dessert_term in keyword_lower for dessert_term in ["dessert", "bakery", "cake", "ice cream", "甜點", "甜食", "蛋糕", "麵包", "烘焙", "冰淇淋"]):
                 result["type"] = "bakery"
             elif any(snack_term in keyword_lower for snack_term in ["snack", "street food", "小吃", "路邊攤"]):
@@ -501,8 +506,13 @@ def parse_user_request(text: str) -> Dict[str, Any]:
             params["keyword"] = type_query
             
             # Set the appropriate type based on the keyword
-            if any(drink_term in type_keyword for drink_term in ["cafe", "coffee", "bubble tea", "boba", "milk tea", "bar", "juice", "咖啡", "奶茶", "珍珠", "酒吧", "果汁"]):
+            if any(drink_term in type_keyword for drink_term in ["cafe", "coffee", "咖啡"]):
                 params["type"] = "cafe"
+            elif any(drink_term in type_keyword for drink_term in ["bubble tea", "boba", "milk tea", "奶茶", "珍珠", "手搖", "tea", "茶"]):
+                # For bubble tea shops and tea houses
+                params["type"] = "tea_house"
+            elif any(drink_term in type_keyword for drink_term in ["bar", "juice", "酒吧", "果汁"]):
+                params["type"] = "bar"
             elif any(dessert_term in type_keyword for dessert_term in ["dessert", "bakery", "cake", "ice cream", "甜點", "甜食", "蛋糕", "麵包", "烘焙", "冰淇淋"]):
                 params["type"] = "bakery"
             elif any(snack_term in type_keyword for snack_term in ["snack", "street food", "小吃", "路邊攤"]):
