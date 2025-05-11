@@ -10,6 +10,8 @@ A LINE Bot application for finding restaurants based on user requirements using 
 - **Customizable Filters**: Search by cuisine type, price level, and operating status
 - **Interactive UI**: Rich visual responses with restaurant details using LINE Flex Messages
 - **Google Maps Integration**: Powered by Google Maps Places API for accurate restaurant data
+- **Multi-language Support**: Automatic language detection and translation for user messages
+- **Persistent Storage**: SQLite database for storing user locations and preferences
 
 ## Architecture
 
@@ -20,6 +22,9 @@ The application consists of several key components:
 - **LINE Bot (line_bot.py)**: Handles webhook events from LINE platform
 - **Restaurant Finder (restaurant_finder.py)**: Interfaces with Google Maps API to find restaurants
 - **Utils (utils.py)**: Provides text parsing capabilities with regex and/or OpenAI
+- **Translation (translation.py)**: Handles language detection and translation using OpenAI
+- **Language Pack (language_pack.py)**: Contains localized strings and messages
+- **Database (database.py)**: Manages SQLite database operations
 - **Server (server.py)**: FastAPI application that brings everything together
 
 ## Installation
@@ -29,7 +34,7 @@ The application consists of several key components:
 - Python 3.8+
 - LINE Developer Account
 - Google Maps API Key
-- OpenAI API Key (optional)
+- OpenAI API Key (required for translation and optional for parsing)
 
 ### Setup
 
@@ -51,7 +56,7 @@ The application consists of several key components:
    LINE_CHANNEL_SECRET=your_line_secret
    HOST=0.0.0.0
    PORT=8000
-   OPENAI_API_KEY=your_openai_api_key  # Optional
+   OPENAI_API_KEY=your_openai_api_key
    USE_AI_PARSING=true  # Set to false to use regex-based parsing
    ```
 
@@ -103,21 +108,24 @@ Use FastAPI's built-in Swagger UI at http://localhost:8000/docs to test endpoint
 The application flows in two main paths:
 
 1. **Text Message Flow**: 
-  - User sends a text message
-  - The bot first uses OpenAI function calling to determine if the message is about finding a restaurant
-  - If not, the bot replies that it can only help with restaurant recommendations
-  - If yes, the app parses the request using either regex or OpenAI
-  - If location is found, restaurants are searched and results displayed
-  - If no location is found, the app asks the user to share their location
+   - User sends a text message
+   - The bot detects the language and translates if necessary
+   - The bot uses OpenAI function calling to determine if the message is about finding a restaurant
+   - If not, the bot replies that it can only help with restaurant recommendations
+   - If yes, the app parses the request using either regex or OpenAI
+   - If location is found, restaurants are searched and results displayed
+   - If no location is found, the app asks the user to share their location
 
 2. **Location Message Flow**:
-  - User shares their location via LINE
-  - The app searches for nearby restaurants
-  - Results are displayed as an interactive carousel
+   - User shares their location via LINE
+   - The app stores the location in the database
+   - The app searches for nearby restaurants
+   - Results are displayed as an interactive carousel
 
 ## Future Improvements
 
 - Add user preference tracking
 - Implement reservation capabilities
-- Add multi-language support
-- Enhance the restaurant recommendation algorithm 
+- Enhance the restaurant recommendation algorithm
+- Add support for restaurant reviews and ratings
+- Implement caching for frequently accessed data 
