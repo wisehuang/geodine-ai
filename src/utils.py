@@ -1,7 +1,8 @@
 import re
 import os
 import json
-from typing import Dict, Any, Tuple
+import time
+from typing import Dict, Any, Tuple, List
 from openai import OpenAI
 
 # Initialize OpenAI client
@@ -35,7 +36,7 @@ def parse_user_request_with_ai(text: str) -> Dict[str, Any]:
     
     try:
         response = client.chat.completions.create(
-            model="gpt-4o",
+            model="gpt-3.5-turbo",
             messages=[
                 {"role": "system", "content": "You are a helpful assistant that extracts structured data from user requests."},
                 {"role": "user", "content": prompt}
@@ -75,6 +76,94 @@ def parse_user_request_with_ai(text: str) -> Dict[str, Any]:
         print(f"Error using OpenAI API: {str(e)}")
         # Fall back to regex-based parsing if OpenAI fails
         return parse_user_request(text)
+
+def analyze_and_select_restaurants(restaurants: List[Dict[str, Any]], user_query: str, max_results: int = 3) -> List[Dict[str, Any]]:
+    """
+    Use ChatGPT to analyze restaurants from Google Maps API and select the best matches based on user request
+    
+    Args:
+        restaurants: List of restaurant data from Google Maps API
+        user_query: The original user request text
+        max_results: Maximum number of restaurants to return
+        
+    Returns:
+        List of selected restaurants with additional explanation
+    """
+    # Limit number of restaurants to analyze to avoid token limits
+    restaurants_to_analyze = restaurants[:10]
+    
+    if not restaurants_to_analyze:
+        return []
+    
+    # Format restaurant data for ChatGPT
+    restaurants_json = json.dumps(restaurants_to_analyze, ensure_ascii=False)
+    
+    prompt = f"""
+    I need you to analyze these restaurants and select {max_results} that best match the user's request.
+    
+    USER REQUEST: "{user_query}"
+    
+    RESTAURANTS (JSON): {restaurants_json}
+    
+    For each selected restaurant, provide:
+    1. Why it's a good match for the user's request
+    2. What makes it stand out from the others
+    3. Any specific recommendations based on available data
+    
+    Return your response as JSON with the following structure:
+    {{
+        "selected_restaurants": [
+            {{
+                "restaurant": {{original restaurant object}},
+                "explanation": "Why this restaurant is a good match",
+                "highlight": "Key feature to highlight"
+            }}
+        ]
+    }}
+    
+    Limit your selection to {max_results} restaurants.
+    """
+    
+    try:
+        # Add retry mechanism
+        max_retries = 3
+        retry_delay = 2
+        
+        for attempt in range(max_retries):
+            try:
+                response = client.chat.completions.create(
+                    model="gpt-3.5-turbo-16k",  # Use a model with larger context
+                    messages=[
+                        {"role": "system", "content": "You are a helpful assistant that analyzes restaurant options to find the best matches for user requests."},
+                        {"role": "user", "content": prompt}
+                    ],
+                    temperature=0.3,
+                    response_format={"type": "json_object"},
+                    max_tokens=4000
+                )
+                
+                # Parse the response JSON
+                result = json.loads(response.choices[0].message.content)
+                
+                # Check if the result has the expected structure
+                if "selected_restaurants" not in result:
+                    raise ValueError("Invalid response format: 'selected_restaurants' not found")
+                
+                print(f"Successfully analyzed and selected {len(result['selected_restaurants'])} restaurants")
+                return result["selected_restaurants"]
+                
+            except Exception as e:
+                print(f"Error on attempt {attempt+1}/{max_retries}: {str(e)}")
+                if attempt < max_retries - 1:
+                    time.sleep(retry_delay)
+                    retry_delay *= 2  # Exponential backoff
+                else:
+                    raise
+        
+    except Exception as e:
+        print(f"Error analyzing restaurants with ChatGPT: {str(e)}")
+        # Fallback: Just return the top restaurants without analysis
+        return [{"restaurant": r, "explanation": "", "highlight": ""} for r in restaurants_to_analyze[:max_results]]
 
 def parse_user_request(text: str) -> Dict[str, Any]:
     """

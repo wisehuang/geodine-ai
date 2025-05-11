@@ -5,13 +5,15 @@ from linebot import LineBotApi, WebhookHandler
 from linebot.exceptions import InvalidSignatureError, LineBotApiError
 from linebot.models import (
     MessageEvent, TextMessage, LocationMessage, 
-    TextSendMessage, FlexSendMessage
+    TextSendMessage, FlexSendMessage, CarouselContainer, BubbleContainer,
+    BoxComponent, ButtonComponent, TextComponent, ImageComponent,
+    URIAction
 )
 from pydantic import BaseModel
 from typing import Optional, Dict, Any, List
 
 from src.restaurant_finder import search_restaurants
-from src.utils import parse_user_request, parse_user_request_with_ai
+from src.utils import parse_user_request, parse_user_request_with_ai, analyze_and_select_restaurants
 from src.database import init_db, save_user_location, get_user_location, get_user_location_for_search
 from dotenv import load_dotenv
 
@@ -107,11 +109,195 @@ def safe_reply_or_push(event, messages):
             # For other LINE API errors, log them
             print(f"LINE API Error: {str(e)}")
 
+def search_and_push(query_params, user_id, original_query=""):
+    """Search for restaurants using ChatGPT to select and push to user as carousel"""
+    try:
+        # Search for restaurants
+        all_results = search_restaurants(query_params)
+        
+        # If no results found
+        if not all_results or len(all_results) == 0:
+            line_bot_api.push_message(
+                user_id,
+                TextSendMessage(text="Sorry, I couldn't find any restaurants matching your criteria.")
+            )
+            return
+        
+        print(f"Found {len(all_results)} restaurants from Google Maps API")
+        
+        # Use ChatGPT to analyze and select top restaurants
+        selected_results = analyze_and_select_restaurants(
+            restaurants=all_results, 
+            user_query=original_query or "Find a good restaurant nearby",
+            max_results=3
+        )
+        
+        # Check if we have selected restaurants
+        if not selected_results:
+            # Fallback to the original results
+            print("No restaurants selected by AI, using top results")
+            selected_results = [{"restaurant": r, "explanation": "", "highlight": ""} for r in all_results[:3]]
+        
+        # Create carousel with the selected restaurants
+        carousel_message = create_restaurant_carousel(selected_results)
+        
+        # Use push message to send the carousel
+        line_bot_api.push_message(
+            user_id,
+            FlexSendMessage(
+                alt_text=f"Here are {len(selected_results)} recommended restaurants for you",
+                contents=carousel_message
+            )
+        )
+    except Exception as e:
+        print(f"Error searching restaurants: {str(e)}")
+        line_bot_api.push_message(
+            user_id,
+            TextSendMessage(text=f"I encountered an error while searching: {str(e)}")
+        )
+
+def create_restaurant_carousel(selected_restaurants):
+    """Create a carousel message with the selected restaurants"""
+    bubbles = []
+    
+    for selected in selected_restaurants:
+        restaurant = selected.get("restaurant", {})
+        explanation = selected.get("explanation", "")
+        highlight = selected.get("highlight", "")
+        
+        # Create a bubble for each restaurant
+        bubble = {
+            "type": "bubble",
+            "hero": {
+                "type": "image",
+                "url": restaurant.get("photo_url", "https://via.placeholder.com/300x200"),
+                "size": "full",
+                "aspectRatio": "20:13",
+                "aspectMode": "cover"
+            },
+            "body": {
+                "type": "box",
+                "layout": "vertical",
+                "contents": [
+                    {
+                        "type": "text",
+                        "text": restaurant.get("name", "Restaurant"),
+                        "weight": "bold",
+                        "size": "xl",
+                        "wrap": True
+                    }
+                ]
+            },
+            "footer": {
+                "type": "box",
+                "layout": "vertical",
+                "contents": [
+                    {
+                        "type": "button",
+                        "action": {
+                            "type": "uri",
+                            "label": "View in Google Maps",
+                            "uri": f"https://www.google.com/maps/place/?q=place_id:{restaurant.get('place_id', '')}"
+                        },
+                        "style": "primary"
+                    }
+                ]
+            }
+        }
+        
+        # Add rating if available
+        if "rating" in restaurant:
+            bubble["body"]["contents"].append({
+                "type": "box",
+                "layout": "baseline",
+                "margin": "md",
+                "contents": [
+                    {
+                        "type": "text",
+                        "text": f"Rating: {restaurant.get('rating', 'N/A')} ⭐",
+                        "size": "sm",
+                        "color": "#999999",
+                        "flex": 2
+                    }
+                ]
+            })
+        
+        # Add price level if available
+        if "price_level" in restaurant:
+            price_symbols = "💰" * restaurant.get("price_level", 0)
+            bubble["body"]["contents"].append({
+                "type": "box",
+                "layout": "baseline",
+                "margin": "md",
+                "contents": [
+                    {
+                        "type": "text",
+                        "text": f"Price: {price_symbols or 'N/A'}",
+                        "size": "sm",
+                        "color": "#999999",
+                        "flex": 2
+                    }
+                ]
+            })
+            
+        # Add address if available
+        if "address" in restaurant:
+            bubble["body"]["contents"].append({
+                "type": "box",
+                "layout": "baseline",
+                "margin": "md",
+                "contents": [
+                    {
+                        "type": "text",
+                        "text": f"Address: {restaurant.get('address', 'N/A')}",
+                        "size": "sm",
+                        "color": "#999999",
+                        "wrap": True
+                    }
+                ]
+            })
+        
+        # Add explanation if available
+        if explanation:
+            bubble["body"]["contents"].append({
+                "type": "text",
+                "text": explanation,
+                "wrap": True,
+                "size": "sm",
+                "margin": "md",
+                "color": "#666666"
+            })
+            
+        # Add highlight if available
+        if highlight:
+            bubble["body"]["contents"].append({
+                "type": "text",
+                "text": f"✨ {highlight}",
+                "wrap": True,
+                "size": "sm",
+                "margin": "md",
+                "weight": "bold",
+                "color": "#1DB446"
+            })
+            
+        bubbles.append(bubble)
+    
+    # Create carousel with the bubbles
+    carousel = {
+        "type": "carousel",
+        "contents": bubbles
+    }
+    
+    return carousel
+
 @handler.add(MessageEvent, message=TextMessage)
 def handle_text_message(event):
     """Handle text messages, parse user requests"""
     user_id = event.source.user_id
     text = event.message.text
+    
+    # Save original query for later use
+    original_query = text
     
     # Check if text is "Any" (user wants generic recommendations)
     if text.lower() in ["any", "anything", "general"]:
@@ -139,7 +325,7 @@ def handle_text_message(event):
         )
         
         # Then search and push results
-        search_and_push(query_params, user_id)
+        search_and_push(query_params, user_id, original_query)
         return
     
     # Parse user request (with AI if enabled)
@@ -187,7 +373,7 @@ def handle_text_message(event):
     print(f"Final query params before search: {query_params}")
     
     # Then search and push results
-    search_and_push(query_params, user_id)
+    search_and_push(query_params, user_id, original_query)
 
 @handler.add(MessageEvent, message=LocationMessage)
 def handle_location_message(event):
@@ -222,114 +408,3 @@ def handle_location_message(event):
         event,
         TextSendMessage(text="\n".join(preference_questions))
     )
-
-def search_and_push(query_params, user_id):
-    """Search for restaurants and push only the first result to user"""
-    try:
-        # Search for restaurants without sending progress message
-        results = search_restaurants(query_params)
-        
-        # If no results found
-        if not results or len(results) == 0:
-            line_bot_api.push_message(
-                user_id,
-                TextSendMessage(text="Sorry, I couldn't find any restaurants matching your criteria.")
-            )
-            return
-        
-        # Only take the first result
-        first_restaurant = results[0]
-        print(f"Sending first restaurant result: {first_restaurant['name']}")
-        
-        # Create a single restaurant message instead of a carousel
-        restaurant_message = create_single_restaurant_message(first_restaurant)
-        
-        # Use push message to send response with just the first restaurant
-        line_bot_api.push_message(
-            user_id,
-            FlexSendMessage(alt_text=f"Found restaurant: {first_restaurant['name']}", contents=restaurant_message)
-        )
-    except Exception as e:
-        print(f"Error searching restaurants: {str(e)}")
-        line_bot_api.push_message(
-            user_id,
-            TextSendMessage(text=f"I encountered an error while searching: {str(e)}")
-        )
-
-def create_single_restaurant_message(restaurant):
-    """Create a Flex Message for a single restaurant result"""
-    bubble = {
-        "type": "bubble",
-        "hero": {
-            "type": "image",
-            "url": restaurant.get("photo_url", "https://via.placeholder.com/300x200"),
-            "size": "full",
-            "aspectRatio": "20:13",
-            "aspectMode": "cover"
-        },
-        "body": {
-            "type": "box",
-            "layout": "vertical",
-            "contents": [
-                {
-                    "type": "text",
-                    "text": restaurant["name"],
-                    "weight": "bold",
-                    "size": "xl"
-                },
-                {
-                    "type": "box",
-                    "layout": "vertical",
-                    "margin": "lg",
-                    "contents": [
-                        {
-                            "type": "box",
-                            "layout": "baseline",
-                            "contents": [
-                                {
-                                    "type": "text",
-                                    "text": f"Rating: {restaurant.get('rating', 'N/A')}"
-                                }
-                            ]
-                        },
-                        {
-                            "type": "box",
-                            "layout": "baseline",
-                            "contents": [
-                                {
-                                    "type": "text",
-                                    "text": f"Address: {restaurant.get('address', 'N/A')}"
-                                }
-                            ]
-                        },
-                        {
-                            "type": "box",
-                            "layout": "baseline",
-                            "contents": [
-                                {
-                                    "type": "text",
-                                    "text": f"Price level: {restaurant.get('price_level', 'N/A')}"
-                                }
-                            ]
-                        }
-                    ]
-                }
-            ]
-        },
-        "footer": {
-            "type": "box",
-            "layout": "vertical",
-            "contents": [
-                {
-                    "type": "button",
-                    "action": {
-                        "type": "uri",
-                        "label": "Open in Google Maps",
-                        "uri": f"https://www.google.com/maps/place/?q=place_id:{restaurant['place_id']}"
-                    }
-                }
-            ]
-        }
-    }
-    
-    return bubble
