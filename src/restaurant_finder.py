@@ -23,7 +23,7 @@ class RestaurantSearchRequest(BaseModel):
     location: Union[Tuple[float, float], Dict[str, float]]  # (latitude, longitude) or {"lat": lat, "lng": lng}
     keyword: Optional[str] = None
     radius: int = 1000
-    type: str = "restaurant"
+    type: Optional[str] = None  # Made optional to support different establishment types
     price_level: Optional[int] = None
     open_now: bool = False
     language: Optional[str] = None
@@ -45,19 +45,19 @@ class RestaurantResponse(BaseModel):
 )
 async def search_restaurants_api(request: RestaurantSearchRequest):
     """
-    Search for restaurants that match the criteria
+    Search for food and drink establishments that match the criteria
     
     Parameters:
     - location: Geographic coordinates (latitude, longitude)
-    - keyword: Search keyword (e.g., "vegetarian", "Japanese")
+    - keyword: Search keyword (e.g., "vegetarian", "Japanese", "bubble tea")
     - radius: Search radius (meters)
-    - type: Place type (default is restaurant)
+    - type: Place type (can be restaurant, cafe, bar, bakery, etc.)
     - price_level: Price level (0-4)
-    - open_now: Whether to show only currently open restaurants
+    - open_now: Whether to show only currently open establishments
     - language: Language for the search
     
     Returns:
-    - A list of restaurants with name, address, rating, and other information
+    - A list of food and drink establishments with name, address, rating, and other information
     
     Security:
     - Requires valid API key in X-API-Key header
@@ -70,7 +70,7 @@ async def search_restaurants_api(request: RestaurantSearchRequest):
 
 def search_restaurants(params):
     """
-    Search for restaurants using Google Maps Places API
+    Search for food and drink establishments using Google Maps Places API
     """
     # Debug log to help diagnose issues
     print(f"Search params received: {params}")
@@ -105,13 +105,20 @@ def search_restaurants(params):
     api_params = {
         "location": location,
         "radius": params.get("radius", 1000),
-        "type": params.get("type", "restaurant"),
         "open_now": params.get("open_now", False)
     }
     
-    # Add optional parameters
+    # Add type parameter if provided, otherwise use keyword to find any food/drink establishment
+    establishment_type = params.get("type")
+    if establishment_type:
+        api_params["type"] = establishment_type
+    
+    # Always add keyword parameter if provided
     if "keyword" in params and params["keyword"]:
         api_params["keyword"] = params["keyword"]
+    # If no keyword provided and no type specified, default to food-related search
+    elif "type" not in api_params:
+        api_params["keyword"] = "food"
     
     if "price_level" in params and params["price_level"] is not None:
         api_params["min_price"] = params["price_level"]

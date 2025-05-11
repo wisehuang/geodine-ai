@@ -24,14 +24,14 @@ MAX_TRANSLATION_CACHE_SIZE = 1000
 
 def is_restaurant_related(text: str) -> Tuple[bool, str]:
     """
-    Check if the user's input is related to finding a restaurant using OpenAI function calling.
+    Check if the user's input is related to finding food, drinks, or dining establishments using OpenAI function calling.
     
     Args:
         text: The user's input text
         
     Returns:
         A tuple of (is_related, message)
-        - is_related: Boolean indicating if the input is related to restaurant finding
+        - is_related: Boolean indicating if the input is related to food/drink finding
         - message: A message to send if not related
     """
     # Detect language for potential reply message only
@@ -64,6 +64,31 @@ def is_restaurant_related(text: str) -> Tuple[bool, str]:
             # Translate the greeting response
             return True, get_message("greeting_short", language)
     
+    # Simple keyword matching to detect food-related queries
+    food_drink_keywords = {
+        # English food keywords
+        "food", "eat", "restaurant", "dining", "meal", "lunch", "dinner", "breakfast", "brunch",
+        "cuisine", "menu", "dishes", "snack", "street food", "take out", "takeaway", "delivery",
+        # English drink keywords
+        "drink", "coffee", "cafe", "tea", "bubble tea", "boba", "milk tea", "juice", "bar", 
+        "alcohol", "beer", "wine", "cocktail", "beverage",
+        # English dessert/bakery keywords
+        "dessert", "cake", "ice cream", "sweet", "bakery", "pastry", "bread",
+        # Chinese food keywords
+        "食物", "吃", "餐廳", "用餐", "餐點", "午餐", "晚餐", "早餐", "早午餐", 
+        "菜系", "菜單", "菜色", "小吃", "路邊攤", "外帶", "外送",
+        # Chinese drink keywords
+        "飲料", "咖啡", "茶", "珍珠奶茶", "手搖杯", "果汁", "酒吧", 
+        "酒", "啤酒", "葡萄酒", "調酒", "飲品",
+        # Chinese dessert/bakery keywords
+        "甜點", "蛋糕", "冰淇淋", "甜食", "麵包店", "糕點", "麵包"
+    }
+    
+    # Check if any food/drink keyword is in the text
+    for keyword in food_drink_keywords:
+        if keyword in text_lower:
+            return True, ""
+    
     # Use ChatGPT with function calling for more accurate intent classification
     if os.getenv("USE_AI_PARSING", "False").lower() == "true":
         try:
@@ -91,25 +116,25 @@ def is_restaurant_related(text: str) -> Tuple[bool, str]:
                 function_name = tool_call.function.name
                 
                 if function_name == "restaurant_search":
-                    # The AI determined this is a restaurant-related query
+                    # The AI determined this is a food/drink-related query
                     return True, ""
                 elif function_name == "non_restaurant_query":
-                    # The AI determined this is not restaurant-related
+                    # The AI determined this is not food/drink-related
                     function_args = json.loads(tool_call.function.arguments)
                     query_type = function_args.get("query_type", "")
                     
                     # Get non-restaurant query message from language pack
                     return False, get_message("non_restaurant_query", language, query_type=query_type)
             
-            # If no function call, default to treating as restaurant-related
+            # If no function call, default to treating as food/drink-related
             return True, ""
             
         except Exception as e:
             print(f"Error using OpenAI API for intent detection: {str(e)}")
             # Fall back to simpler checks if AI check fails
     
-    # Simple keyword matching for non-restaurant queries as fallback
-    # Define English non-restaurant keywords only
+    # Simple keyword matching for non-food/drink queries as fallback
+    # Define English non-food/drink keywords only
     non_restaurant_keywords = get_non_restaurant_keywords()
     
     # For English input, check against English keywords
@@ -135,7 +160,7 @@ def is_restaurant_related(text: str) -> Tuple[bool, str]:
                 if keyword in translated_text_to_en:
                     return False, get_message("non_restaurant_query", language, query_type=keyword)
     
-    # Default to assuming it's restaurant-related if no other conditions matched
+    # Default to assuming it's food/drink-related if no other conditions matched
     return True, ""
 
 def parse_user_request_with_ai(text: str) -> Dict[str, Any]:
@@ -152,14 +177,14 @@ def parse_user_request_with_ai(text: str) -> Dict[str, Any]:
     system_prompt = "You are a helpful assistant that extracts structured data from user requests."
     user_prompt = f"""
     Extract the following information from this user request: "{text}"
-    - Restaurant type or cuisine (e.g., japanese, chinese, italian, etc.)
+    - Food/drink type or cuisine (e.g., japanese, chinese, italian, cafe, bubble tea, dessert, etc.)
     - Location (e.g., a place name, landmark, etc.)
     - Price level (1=affordable, 2=medium, 3=expensive, 4=luxury)
     - Other requirements (e.g., open now)
     
     Return a JSON with the following structure:
     {{
-        "keyword": "cuisine type or null",
+        "keyword": "cuisine or establishment type or null",
         "location_name": "location or null",
         "price_level": number or null,
         "open_now": boolean
@@ -180,12 +205,9 @@ def parse_user_request_with_ai(text: str) -> Dict[str, Any]:
         # Parse the response JSON
         result = json.loads(response.choices[0].message.content)
         
-        # Always include the restaurant type
-        result["type"] = "restaurant"
-        
-        # Map cuisine to appropriate format if present
-        cuisine_types = {
-            # English
+        # Map food/drink type to appropriate format if present
+        establishment_types = {
+            # Food establishments - English
             "japanese": "japanese restaurant",
             "chinese": "chinese restaurant",
             "italian": "italian restaurant",
@@ -193,9 +215,29 @@ def parse_user_request_with_ai(text: str) -> Dict[str, Any]:
             "thai": "thai restaurant",
             "korean": "korean restaurant",
             "vegetarian": "vegetarian restaurant",
+            "burger": "burger",
+            "pizza": "pizza",
+            "steak": "steak",
+            "seafood": "seafood",
+            "hot pot": "hot pot",
+            "bbq": "bbq",
+            # Drink establishments - English
             "coffee": "cafe",
+            "cafe": "cafe", 
+            "bubble tea": "bubble tea",
+            "boba": "bubble tea",
+            "milk tea": "bubble tea",
+            "tea": "tea house",
+            "bar": "bar",
+            "juice": "juice bar",
+            # Dessert/Snacks - English
             "dessert": "dessert",
-            # Chinese
+            "cake": "bakery",
+            "bakery": "bakery",
+            "ice cream": "ice cream",
+            "snack": "snack",
+            "street food": "street food",
+            # Food establishments - Chinese
             "日本": "japanese restaurant",
             "日式": "japanese restaurant",
             "中餐": "chinese restaurant",
@@ -208,17 +250,48 @@ def parse_user_request_with_ai(text: str) -> Dict[str, Any]:
             "韓式": "korean restaurant",
             "韓國": "korean restaurant",
             "素食": "vegetarian restaurant",
+            "漢堡": "burger",
+            "披薩": "pizza",
+            "牛排": "steak",
+            "海鮮": "seafood",
+            "火鍋": "hot pot",
+            "燒烤": "bbq",
+            # Drink establishments - Chinese
             "咖啡": "cafe",
+            "珍珠奶茶": "bubble tea",
+            "珍奶": "bubble tea",
+            "手搖杯": "bubble tea",
+            "奶茶": "bubble tea",
+            "茶": "tea house",
+            "酒吧": "bar",
+            "果汁": "juice bar",
+            # Dessert/Snacks - Chinese
             "甜點": "dessert",
-            "甜食": "dessert"
+            "甜食": "dessert",
+            "蛋糕": "bakery",
+            "麵包": "bakery",
+            "烘焙": "bakery",
+            "冰淇淋": "ice cream",
+            "小吃": "snack",
+            "路邊攤": "street food"
         }
         
         if "keyword" in result and result["keyword"]:
             keyword_lower = result["keyword"].lower()
-            for cuisine_key, cuisine_query in cuisine_types.items():
-                if cuisine_key in keyword_lower:
-                    result["keyword"] = cuisine_query
+            for type_key, type_query in establishment_types.items():
+                if type_key in keyword_lower:
+                    result["keyword"] = type_query
                     break
+                    
+            # Set the appropriate type based on the keyword
+            if any(drink_term in keyword_lower for drink_term in ["cafe", "coffee", "bubble tea", "boba", "milk tea", "bar", "juice", "咖啡", "奶茶", "珍珠", "酒吧", "果汁"]):
+                result["type"] = "cafe"
+            elif any(dessert_term in keyword_lower for dessert_term in ["dessert", "bakery", "cake", "ice cream", "甜點", "甜食", "蛋糕", "麵包", "烘焙", "冰淇淋"]):
+                result["type"] = "bakery"
+            elif any(snack_term in keyword_lower for snack_term in ["snack", "street food", "小吃", "路邊攤"]):
+                result["type"] = "food"  # General food type for snacks and street food
+            else:
+                result["type"] = "restaurant"  # Default to restaurant
         
         return result
     
@@ -229,24 +302,24 @@ def parse_user_request_with_ai(text: str) -> Dict[str, Any]:
 
 def analyze_and_select_restaurants(restaurants: List[Dict[str, Any]], user_query: str, max_results: int = 3, language: str = "en") -> List[Dict[str, Any]]:
     """
-    Use ChatGPT to analyze restaurants from Google Maps API and select the best matches based on user request
+    Use ChatGPT to analyze food & drink places from Google Maps API and select the best matches based on user request
     
     Args:
-        restaurants: List of restaurant data from Google Maps API
+        restaurants: List of food & drink places from Google Maps API
         user_query: The original user request text
-        max_results: Maximum number of restaurants to return
+        max_results: Maximum number of places to return
         language: The language to use for responses ('en', 'zh-tw', 'ja', 'ko', etc.)
         
     Returns:
-        List of selected restaurants with additional explanation
+        List of selected places with additional explanation
     """
-    # Limit number of restaurants to analyze to avoid token limits
+    # Limit number of places to analyze to avoid token limits
     restaurants_to_analyze = restaurants[:10]
     
     if not restaurants_to_analyze:
         return []
     
-    # Format restaurant data for ChatGPT
+    # Format place data for ChatGPT
     restaurants_json = json.dumps(restaurants_to_analyze, ensure_ascii=False)
     
     # Get system prompt from language pack
@@ -254,13 +327,13 @@ def analyze_and_select_restaurants(restaurants: List[Dict[str, Any]], user_query
     
     # Use English as the prompt language
     prompt = f"""
-    I need you to analyze these restaurants and select {max_results} that best match the user's request.
+    I need you to analyze these food & drink places and select {max_results} that best match the user's request.
     
     USER REQUEST: "{user_query}"
     
-    RESTAURANTS (JSON): {restaurants_json}
+    PLACES (JSON): {restaurants_json}
     
-    For each selected restaurant, provide:
+    For each selected place, provide:
     1. Why it's a good match for the user's request
     2. What makes it stand out from the others
     3. Any specific recommendations based on available data
@@ -272,14 +345,14 @@ def analyze_and_select_restaurants(restaurants: List[Dict[str, Any]], user_query
     {{
         "selected_restaurants": [
             {{
-                "restaurant": {{original restaurant object}},
-                "explanation": "Why this restaurant is a good match (in the user's language)",
+                "restaurant": {{original place object}},
+                "explanation": "Why this place is a good match (in the user's language)",
                 "highlight": "Key feature to highlight (in the user's language)"
             }}
         ]
     }}
     
-    Limit your selection to {max_results} restaurants.
+    Limit your selection to {max_results} places.
     """
     
     try:
@@ -307,7 +380,7 @@ def analyze_and_select_restaurants(restaurants: List[Dict[str, Any]], user_query
                 if "selected_restaurants" not in result:
                     raise ValueError("Invalid response format: 'selected_restaurants' not found")
                 
-                print(f"Successfully analyzed and selected {len(result['selected_restaurants'])} restaurants")
+                print(f"Successfully analyzed and selected {len(result['selected_restaurants'])} places")
                 return result["selected_restaurants"]
                 
             except Exception as e:
@@ -319,8 +392,8 @@ def analyze_and_select_restaurants(restaurants: List[Dict[str, Any]], user_query
                     raise
         
     except Exception as e:
-        print(f"Error analyzing restaurants with ChatGPT: {str(e)}")
-        # Fallback: Just return the top restaurants without analysis
+        print(f"Error analyzing places with ChatGPT: {str(e)}")
+        # Fallback: Just return the top places without analysis
         return [{"restaurant": r, "explanation": "", "highlight": ""} for r in restaurants_to_analyze[:max_results]]
 
 def parse_user_request(text: str) -> Dict[str, Any]:
@@ -333,9 +406,7 @@ def parse_user_request(text: str) -> Dict[str, Any]:
     - Type: Japanese food
     - Price: Medium
     """
-    params = {
-        "type": "restaurant"
-    }
+    params = {}
     
     # Detect language
     language = detect_language(text)
@@ -354,9 +425,9 @@ def parse_user_request(text: str) -> Dict[str, Any]:
             location_name = location_match.group(2)
             params["location_name"] = location_name
     
-    # Parse restaurant type with bilingual support
-    cuisine_types = {
-        # English cuisines
+    # Parse food and drink type with bilingual support
+    establishment_types = {
+        # Food establishments - English
         "japanese": "japanese restaurant",
         "chinese": "chinese restaurant",
         "italian": "italian restaurant",
@@ -364,9 +435,29 @@ def parse_user_request(text: str) -> Dict[str, Any]:
         "thai": "thai restaurant",
         "korean": "korean restaurant",
         "vegetarian": "vegetarian restaurant",
+        "burger": "burger",
+        "pizza": "pizza",
+        "steak": "steak",
+        "seafood": "seafood",
+        "hot pot": "hot pot",
+        "bbq": "bbq",
+        # Drink establishments - English
         "coffee": "cafe",
+        "cafe": "cafe", 
+        "bubble tea": "bubble tea",
+        "boba": "bubble tea",
+        "milk tea": "bubble tea",
+        "tea": "tea house",
+        "bar": "bar",
+        "juice": "juice bar",
+        # Dessert/Snacks - English
         "dessert": "dessert",
-        # Chinese cuisine keywords
+        "cake": "bakery",
+        "bakery": "bakery",
+        "ice cream": "ice cream",
+        "snack": "snack",
+        "street food": "street food",
+        # Food establishments - Chinese
         "日本": "japanese restaurant",
         "日式": "japanese restaurant",
         "中餐": "chinese restaurant",
@@ -379,15 +470,52 @@ def parse_user_request(text: str) -> Dict[str, Any]:
         "韓式": "korean restaurant",
         "韓國": "korean restaurant",
         "素食": "vegetarian restaurant",
+        "漢堡": "burger",
+        "披薩": "pizza",
+        "牛排": "steak",
+        "海鮮": "seafood",
+        "火鍋": "hot pot",
+        "燒烤": "bbq",
+        # Drink establishments - Chinese
         "咖啡": "cafe",
+        "珍珠奶茶": "bubble tea",
+        "珍奶": "bubble tea",
+        "手搖杯": "bubble tea",
+        "奶茶": "bubble tea",
+        "茶": "tea house",
+        "酒吧": "bar",
+        "果汁": "juice bar",
+        # Dessert/Snacks - Chinese
         "甜點": "dessert",
-        "甜食": "dessert"
+        "甜食": "dessert",
+        "蛋糕": "bakery",
+        "麵包": "bakery",
+        "烘焙": "bakery",
+        "冰淇淋": "ice cream",
+        "小吃": "snack",
+        "路邊攤": "street food"
     }
     
-    for cuisine_keyword, cuisine_query in cuisine_types.items():
-        if cuisine_keyword in text_lower:
-            params["keyword"] = cuisine_query
+    for type_keyword, type_query in establishment_types.items():
+        if type_keyword in text_lower:
+            params["keyword"] = type_query
+            
+            # Set the appropriate type based on the keyword
+            if any(drink_term in type_keyword for drink_term in ["cafe", "coffee", "bubble tea", "boba", "milk tea", "bar", "juice", "咖啡", "奶茶", "珍珠", "酒吧", "果汁"]):
+                params["type"] = "cafe"
+            elif any(dessert_term in type_keyword for dessert_term in ["dessert", "bakery", "cake", "ice cream", "甜點", "甜食", "蛋糕", "麵包", "烘焙", "冰淇淋"]):
+                params["type"] = "bakery"
+            elif any(snack_term in type_keyword for snack_term in ["snack", "street food", "小吃", "路邊攤"]):
+                params["type"] = "food"  # General food type for snacks and street food
+            else:
+                params["type"] = "restaurant"  # Default to restaurant
+                
             break
+    
+    # If no specific establishment type found, default to food search
+    if "keyword" not in params:
+        if "food" in text_lower or "餐" in text_lower or "吃" in text_lower:
+            params["keyword"] = "food"
     
     # Parse price level with bilingual support
     if language == "en":

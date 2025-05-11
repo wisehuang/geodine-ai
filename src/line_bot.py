@@ -111,18 +111,18 @@ def safe_reply_or_push(event, messages):
             print(f"LINE API Error: {str(e)}")
 
 def search_and_push(query_params, user_id, original_query="", language="en"):
-    """Search for restaurants using ChatGPT to select and push to user as carousel"""
+    """Search for food/drink establishments and push results to user"""
     try:
-        # Add language parameter to query
+        # Set language for search
         query_params["language"] = language
         
-        # English messages - will be translated if needed
+        # Common message templates (will be translated as needed)
         messages = {
-            'no_results': "Sorry, I couldn't find any restaurants matching your criteria.",
+            'no_results': "Sorry, I couldn't find any food or drink places matching your criteria.",
             'error': "I encountered an error while searching: "
         }
         
-        # Search for restaurants
+        # Search for food and drink establishments
         all_results = search_restaurants(query_params)
         
         # If no results found
@@ -135,27 +135,27 @@ def search_and_push(query_params, user_id, original_query="", language="en"):
             )
             return
         
-        print(f"Found {len(all_results)} restaurants from Google Maps API")
+        print(f"Found {len(all_results)} places from Google Maps API")
         
-        # Use ChatGPT to analyze and select top restaurants
+        # Use ChatGPT to analyze and select top places
         selected_results = analyze_and_select_restaurants(
             restaurants=all_results, 
-            user_query=original_query or "Find a good restaurant nearby",
+            user_query=original_query or "Find a good place to eat or drink nearby",
             max_results=3,
             language=language
         )
         
-        # Check if we have selected restaurants
+        # Check if we have selected places
         if not selected_results:
             # Fallback to the original results
-            print("No restaurants selected by AI, using top results")
+            print("No places selected by AI, using top results")
             selected_results = [{"restaurant": r, "explanation": "", "highlight": ""} for r in all_results[:3]]
         
-        # Create carousel with the selected restaurants
+        # Create carousel with the selected places
         carousel_message = create_restaurant_carousel(selected_results, language)
         
         # Use push message to send the carousel
-        alt_text_template = f"Here are {len(selected_results)} recommended restaurants for you"
+        alt_text_template = f"Here are {len(selected_results)} recommended places for you"
         alt_text = translate_text(alt_text_template, language)
             
         line_bot_api.push_message(
@@ -166,7 +166,7 @@ def search_and_push(query_params, user_id, original_query="", language="en"):
             )
         )
     except Exception as e:
-        print(f"Error searching restaurants: {str(e)}")
+        print(f"Error searching places: {str(e)}")
         
         error_message = translate_text(messages['error'], language) + str(e)
         
@@ -349,16 +349,16 @@ def handle_text_message(event):
     
     # Define English messages (will be translated as needed)
     messages = {
-        'not_restaurant_related': "Sorry, I can only help with restaurant-related queries.",
-        'greeting': "Hello! I'm a restaurant recommendation bot. What type of restaurant would you like to find today?",
-        'location_needed': "Please share your location first so I can find restaurants nearby.",
-        'searching_generic': "Looking for restaurants near your location...",
-        'location_request': "Please share your location so I can find restaurants nearby",
+        'not_restaurant_related': "Sorry, I can only help with food and drink related queries.",
+        'greeting': "Hello! I'm a food & drink recommendation bot. What type of food or drink would you like to find today?",
+        'location_needed': "Please share your location first so I can find food and drink places nearby.",
+        'searching_generic': "Looking for food and drink places near your location...",
+        'location_request': "Please share your location so I can find food and drink places nearby",
         'location_error': "I couldn't determine your location. Please share your location and try again.",
-        'searching_criteria': "Searching for restaurants matching your criteria..."
+        'searching_criteria': "Searching for food and drink places matching your criteria..."
     }
     
-    # First, check if the message is related to finding a restaurant
+    # First, check if the message is related to finding food or drink
     is_related, message = is_restaurant_related(text)
     if not is_related:
         response_text = message or messages['not_restaurant_related']
@@ -388,7 +388,7 @@ def handle_text_message(event):
     
     # Check if text is "Any" (user wants generic recommendations)
     # Define only English generic terms
-    generic_terms_en = ["any", "anything", "general", "whatever", "any restaurant"]
+    generic_terms_en = ["any", "anything", "general", "whatever", "any restaurant", "any food"]
     
     # Translate generic terms to the user's language if needed
     is_generic_query = False
@@ -426,7 +426,7 @@ def handle_text_message(event):
         query_params = {
             "location": location,
             "radius": 1000,
-            "type": "restaurant"
+            "keyword": "food" # Use keyword instead of type to find all food establishments
         }
         
         # Inform user and search
@@ -496,7 +496,7 @@ def handle_text_message(event):
 
 @handler.add(MessageEvent, message=LocationMessage)
 def handle_location_message(event):
-    """Handle location messages, save to DB and ask for restaurant preferences"""
+    """Handle location messages, save to DB and ask for food/drink preferences"""
     user_id = event.source.user_id
     latitude = event.message.latitude
     longitude = event.message.longitude
@@ -517,11 +517,13 @@ def handle_location_message(event):
     
     # English templates for preference questions
     preference_questions = [
-        "I've saved your location! What type of restaurant are you looking for?",
+        "I've saved your location! What type of food or drink are you looking for?",
         "For example, you can say:",
         "- \"Japanese food\"",
-        "- \"Affordable Italian restaurants\"", 
-        "- \"Vegetarian restaurants open now\"",
+        "- \"Bubble tea shop\"", 
+        "- \"Street food\"",
+        "- \"Dessert place\"",
+        "- \"Coffee shop\"",
         "- Or just say \"Any\" for general recommendations"
     ]
     
