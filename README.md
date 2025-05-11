@@ -51,17 +51,26 @@ The application consists of several key components:
    pip install -r requirements.txt
    ```
 
-3. Create a `.env` file in the project root with your credentials:
+3. Create a `.env` file in the project root with your credentials. You can use `.env.example` as a template:
    ```
-   GOOGLE_MAPS_API_KEY=your_google_maps_api_key
-   LINE_CHANNEL_ACCESS_TOKEN=your_line_token
-   LINE_CHANNEL_SECRET=your_line_secret
+   # Server Configuration
    HOST=0.0.0.0
    PORT=8000
-   OPENAI_API_KEY=your_openai_api_key
+
+   # API Keys
+   GOOGLE_MAPS_API_KEY=your_google_maps_api_key_here
+   OPENAI_API_KEY=your_openai_api_key_here
+   API_KEY=your_generated_api_key_here  # Generate with: openssl rand -hex 32
+
+   # LINE Bot Configuration
+   LINE_CHANNEL_ACCESS_TOKEN=your_line_channel_access_token_here
+   LINE_CHANNEL_SECRET=your_line_channel_secret_here
+
+   # Feature Flags
    USE_AI_PARSING=true  # Set to false to use regex-based parsing
-   API_KEY=your_api_key  # Required for API authentication
    ```
+
+   > **Important**: Never commit your `.env` file to version control.
 
 ## Running the Application
 
