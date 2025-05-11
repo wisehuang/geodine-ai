@@ -89,7 +89,7 @@ def is_restaurant_related(text: str) -> Tuple[bool, str]:
             ]
             
             response = client.chat.completions.create(
-                model="gpt-3.5-turbo",
+                model="gpt-4o",
                 messages=[
                     {"role": "system", "content": "You are a restaurant recommendation bot. Your main purpose is to help users find restaurants. Determine if the user's message is related to finding restaurants or if it's a different type of request."},
                     {"role": "user", "content": text}
@@ -166,7 +166,7 @@ def parse_user_request_with_ai(text: str) -> Dict[str, Any]:
     
     try:
         response = client.chat.completions.create(
-            model="gpt-3.5-turbo",
+            model="gpt-4o",
             messages=[
                 {"role": "system", "content": "You are a helpful assistant that extracts structured data from user requests."},
                 {"role": "user", "content": prompt}
@@ -262,7 +262,7 @@ def analyze_and_select_restaurants(restaurants: List[Dict[str, Any]], user_query
         for attempt in range(max_retries):
             try:
                 response = client.chat.completions.create(
-                    model="gpt-3.5-turbo-16k",  # Use a model with larger context
+                    model="gpt-4o",  # Use a model with larger context
                     messages=[
                         {"role": "system", "content": "You are a helpful assistant that analyzes restaurant options to find the best matches for user requests."},
                         {"role": "user", "content": prompt}

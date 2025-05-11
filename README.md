@@ -103,15 +103,17 @@ Use FastAPI's built-in Swagger UI at http://localhost:8000/docs to test endpoint
 The application flows in two main paths:
 
 1. **Text Message Flow**: 
-   - User sends a text query like "Find Japanese food near Central Park"
-   - The app parses the request using either regex or OpenAI
-   - If location is found, restaurants are searched and results displayed
-   - If no location is found, the app asks the user to share their location
+  - User sends a text message
+  - The bot first uses OpenAI function calling to determine if the message is about finding a restaurant
+  - If not, the bot replies that it can only help with restaurant recommendations
+  - If yes, the app parses the request using either regex or OpenAI
+  - If location is found, restaurants are searched and results displayed
+  - If no location is found, the app asks the user to share their location
 
 2. **Location Message Flow**:
-   - User shares their location via LINE
-   - The app searches for nearby restaurants
-   - Results are displayed as an interactive carousel
+  - User shares their location via LINE
+  - The app searches for nearby restaurants
+  - Results are displayed as an interactive carousel
 
 ## Future Improvements
 

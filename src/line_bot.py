@@ -77,7 +77,7 @@ def safe_reply_or_push(event, messages):
         # If we've seen this event in the last 5 minutes, skip it
         if current_time - processed_events[event_id] < 300:  # 5 minutes
             print(f"Skipping duplicate event: {event_id}")
-            return
+        return
     
     if event_id:
         processed_events[event_id] = current_time
