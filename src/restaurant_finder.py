@@ -33,6 +33,7 @@ class RestaurantResponse(BaseModel):
     place_id: str
     address: str
     rating: Optional[float] = None
+    user_ratings_total: Optional[int] = None
     price_level: Optional[int] = None
     distance: Optional[int] = None
     photo_url: Optional[str] = None
@@ -154,6 +155,7 @@ def search_restaurants(params):
             "place_id": place["place_id"],
             "address": place.get("vicinity", ""),
             "rating": place.get("rating"),
+            "user_ratings_total": place.get("user_ratings_total"),
             "price_level": place.get("price_level"),
             "photo_url": photo_url
         }

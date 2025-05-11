@@ -240,7 +240,9 @@ def create_restaurant_carousel(selected_restaurants, language="en"):
         
         # Add rating if available
         if "rating" in restaurant:
-            rating_text = f"{translated_labels['rating']}: {restaurant.get('rating', 'N/A')} ({restaurant.get('user_ratings_total', 0)} {translated_labels['reviews']})"
+            rating_text = f"{translated_labels['rating']}: {restaurant.get('rating', 'N/A')}"
+            if restaurant.get('user_ratings_total'):
+                rating_text += f" ({restaurant.get('user_ratings_total')} {translated_labels['reviews']})"
                 
             bubble["body"]["contents"].append({
                 "type": "box",
