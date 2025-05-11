@@ -1,9 +1,11 @@
 import os
 import googlemaps
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from typing import List, Tuple, Dict, Any, Optional, Union
 from dotenv import load_dotenv
+
+from src.security import verify_api_key
 
 # Load environment variables
 load_dotenv()
@@ -38,7 +40,8 @@ class RestaurantResponse(BaseModel):
 @router.post(
     "/search",
     response_model=List[RestaurantResponse],
-    operation_id="search_restaurants"
+    operation_id="search_restaurants",
+    dependencies=[Depends(verify_api_key)]  # Add API key verification
 )
 async def search_restaurants_api(request: RestaurantSearchRequest):
     """
@@ -55,6 +58,9 @@ async def search_restaurants_api(request: RestaurantSearchRequest):
     
     Returns:
     - A list of restaurants with name, address, rating, and other information
+    
+    Security:
+    - Requires valid API key in X-API-Key header
     """
     try:
         results = search_restaurants(vars(request))

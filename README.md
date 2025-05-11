@@ -12,6 +12,7 @@ A LINE Bot application for finding restaurants based on user requirements using 
 - **Google Maps Integration**: Powered by Google Maps Places API for accurate restaurant data
 - **Multi-language Support**: Automatic language detection and translation for user messages
 - **Persistent Storage**: SQLite database for storing user locations and preferences
+- **API Security**: Protected endpoints with API key authentication
 
 ## Architecture
 
@@ -25,6 +26,7 @@ The application consists of several key components:
 - **Translation (translation.py)**: Handles language detection and translation using OpenAI
 - **Language Pack (language_pack.py)**: Contains localized strings and messages
 - **Database (database.py)**: Manages SQLite database operations
+- **Security (security.py)**: Handles API authentication and security
 - **Server (server.py)**: FastAPI application that brings everything together
 
 ## Installation
@@ -58,6 +60,7 @@ The application consists of several key components:
    PORT=8000
    OPENAI_API_KEY=your_openai_api_key
    USE_AI_PARSING=true  # Set to false to use regex-based parsing
+   API_KEY=your_api_key  # Required for API authentication
    ```
 
 ## Running the Application
@@ -74,10 +77,12 @@ The server will start on http://0.0.0.0:8000 with auto-reload enabled.
 ### LINE Bot
 
 - **POST /line/webhook**: Webhook endpoint for LINE platform events
+  - Requires valid LINE signature in X-Line-Signature header
 
 ### Restaurant Finder
 
 - **POST /restaurants/search**: Search for restaurants based on criteria
+  - Requires valid API key in X-API-Key header
   - Parameters:
     - `location`: Geographic coordinates (latitude, longitude)
     - `keyword`: Search keyword (e.g., "vegetarian", "Japanese")
@@ -86,11 +91,29 @@ The server will start on http://0.0.0.0:8000 with auto-reload enabled.
     - `price_level`: Price level from 0-4
     - `open_now`: Whether to show only currently open restaurants
 
+## API Security
+
+The application implements several security measures:
+
+1. **API Key Authentication**:
+   - All `/restaurants/*` endpoints require a valid API key
+   - The API key must be provided in the `X-API-Key` header
+   - The API key is verified using secure comparison to prevent timing attacks
+
+2. **LINE Signature Verification**:
+   - All LINE webhook requests are verified using the LINE signature
+   - The signature is validated using the LINE SDK
+
+3. **Environment Variables**:
+   - All sensitive credentials are stored in environment variables
+   - The `.env` file should never be committed to version control
+
 ## Testing
 
 ### API Testing
 
 Use FastAPI's built-in Swagger UI at http://localhost:8000/docs to test endpoints interactively.
+Note that you'll need to provide the API key in the "Authorize" dialog.
 
 ### LINE Bot Testing
 
@@ -122,10 +145,20 @@ The application flows in two main paths:
    - The app searches for nearby restaurants
    - Results are displayed as an interactive carousel
 
+## Supported Languages
+
+The bot currently supports:
+- English (en)
+- Traditional Chinese (zh-tw)
+- Japanese (ja)
+- Korean (ko)
+
 ## Future Improvements
 
 - Add user preference tracking
 - Implement reservation capabilities
 - Enhance the restaurant recommendation algorithm
 - Add support for restaurant reviews and ratings
-- Implement caching for frequently accessed data 
+- Implement caching for frequently accessed data
+- Add rate limiting for API endpoints
+- Implement JWT authentication for additional security 
