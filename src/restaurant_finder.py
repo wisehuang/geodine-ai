@@ -106,8 +106,8 @@ def search_restaurants(params):
         api_params["keyword"] = params["keyword"]
     
     if "price_level" in params and params["price_level"] is not None:
-        api_params["minprice"] = params["price_level"]
-        api_params["maxprice"] = params["price_level"]
+        api_params["min_price"] = params["price_level"]
+        api_params["max_price"] = params["price_level"]
     
     # Debug log for API call
     print(f"Calling Google Maps API with params: {api_params}")
