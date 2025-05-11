@@ -8,6 +8,136 @@ from openai import OpenAI
 # Initialize OpenAI client
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
+def is_restaurant_related(text: str) -> Tuple[bool, str]:
+    """
+    Check if the user's input is related to finding a restaurant using OpenAI function calling.
+    
+    Args:
+        text: The user's input text
+        
+    Returns:
+        A tuple of (is_related, message)
+        - is_related: Boolean indicating if the input is related to restaurant finding
+        - message: A message to send if not related
+    """
+    # Simple keyword matching for common greetings to provide quick responses
+    greeting_patterns = [
+        r'^hi\b', r'^hello\b', r'^hey\b', r'^what\'?s up\b', 
+        r'^good morning\b', r'^good afternoon\b', r'^good evening\b',
+        r'^help\b', r'^howdy\b', r'^yo\b'
+    ]
+    
+    # If matches greeting pattern, respond but indicate it's restaurant-related
+    for pattern in greeting_patterns:
+        if re.search(pattern, text.lower()):
+            return True, "Hello! I'm a restaurant recommendation bot. How can I help you find a restaurant today?"
+    
+    # Use ChatGPT with function calling for more accurate intent classification
+    if os.getenv("USE_AI_PARSING", "False").lower() == "true":
+        try:
+            # Define functions that can be called, allowing the AI to classify the intent
+            functions = [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "restaurant_search",
+                        "description": "Search for restaurants based on user criteria",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "cuisine": {
+                                    "type": "string",
+                                    "description": "Type of cuisine (e.g., Japanese, Italian, etc.)"
+                                },
+                                "location": {
+                                    "type": "string",
+                                    "description": "Location for restaurant search"
+                                },
+                                "price_level": {
+                                    "type": "integer",
+                                    "description": "Price level (1-4)"
+                                },
+                                "open_now": {
+                                    "type": "boolean",
+                                    "description": "Whether the restaurant should be currently open"
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "non_restaurant_query",
+                        "description": "Handle a query that is not related to restaurant search",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "query_type": {
+                                    "type": "string",
+                                    "description": "Type of query (e.g., weather, news, general chat, etc.)"
+                                },
+                                "explanation": {
+                                    "type": "string",
+                                    "description": "Why this is not a restaurant-related query"
+                                }
+                            },
+                            "required": ["query_type", "explanation"]
+                        }
+                    }
+                }
+            ]
+            
+            response = client.chat.completions.create(
+                model="gpt-3.5-turbo",
+                messages=[
+                    {"role": "system", "content": "You are a restaurant recommendation bot. Your main purpose is to help users find restaurants. Determine if the user's message is related to finding restaurants or if it's a different type of request."},
+                    {"role": "user", "content": text}
+                ],
+                tools=functions,
+                tool_choice="auto",
+                temperature=0.1
+            )
+            
+            # Get the AI's response
+            response_message = response.choices[0].message
+            
+            # Check if the AI chose to call a function
+            if response_message.tool_calls:
+                tool_call = response_message.tool_calls[0]
+                function_name = tool_call.function.name
+                
+                if function_name == "restaurant_search":
+                    # The AI determined this is a restaurant-related query
+                    return True, ""
+                elif function_name == "non_restaurant_query":
+                    # The AI determined this is not restaurant-related
+                    function_args = json.loads(tool_call.function.arguments)
+                    query_type = function_args.get("query_type", "")
+                    return False, f"I'm sorry, but I can only help with finding restaurants. I can't assist with {query_type} queries."
+            
+            # If no function call, default to treating as restaurant-related
+            return True, ""
+            
+        except Exception as e:
+            print(f"Error using OpenAI API for intent detection: {str(e)}")
+            # Fall back to simpler checks if AI check fails
+    
+    # Simple keyword matching for non-restaurant queries as fallback
+    non_restaurant_keywords = [
+        "weather", "news", "stock", "movie", "film", "music", 
+        "translate", "calculator", "alarm", "reminder", "calendar",
+        "shopping", "buy", "purchase", "chat", "talk", "conversation"
+    ]
+    
+    # Check for non-restaurant keywords
+    for keyword in non_restaurant_keywords:
+        if keyword in text.lower():
+            return False, f"I'm sorry, but I can only help with finding restaurants. I can't assist with {keyword}-related queries."
+    
+    # Default to assuming it's restaurant-related if no other conditions matched
+    return True, ""
+
 def parse_user_request_with_ai(text: str) -> Dict[str, Any]:
     """
     Parse user text request using OpenAI API for better natural language understanding

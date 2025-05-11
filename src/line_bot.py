@@ -13,7 +13,7 @@ from pydantic import BaseModel
 from typing import Optional, Dict, Any, List
 
 from src.restaurant_finder import search_restaurants
-from src.utils import parse_user_request, parse_user_request_with_ai, analyze_and_select_restaurants
+from src.utils import parse_user_request, parse_user_request_with_ai, analyze_and_select_restaurants, is_restaurant_related
 from src.database import init_db, save_user_location, get_user_location, get_user_location_for_search
 from dotenv import load_dotenv
 
@@ -301,6 +301,23 @@ def handle_text_message(event):
     
     # Save original query for later use
     original_query = text
+    
+    # First, check if the message is related to finding a restaurant
+    is_related, message = is_restaurant_related(text)
+    if not is_related:
+        safe_reply_or_push(
+            event,
+            TextSendMessage(text=message)
+        )
+        return
+    
+    # If we got a greeting message with a response, send it
+    if message:
+        safe_reply_or_push(
+            event,
+            TextSendMessage(text=message)
+        )
+        return
     
     # Check if text is "Any" (user wants generic recommendations)
     if text.lower() in ["any", "anything", "general"]:
