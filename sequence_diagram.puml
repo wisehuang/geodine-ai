@@ -5,6 +5,8 @@ participant "LINE App" as LINE
 participant "LINE Bot\n(line_bot.py)" as Bot
 participant "Restaurant Finder\n(restaurant_finder.py)" as Finder
 participant "Utils\n(utils.py)" as Utils
+participant "Translation\n(translation.py)" as Translation
+participant "Security\n(security.py)" as Security
 participant "OpenAI API" as OpenAI
 participant "Google Maps API" as Google
 
@@ -12,6 +14,20 @@ participant "Google Maps API" as Google
 User -> LINE: Send text message\n(e.g., "Find Japanese food near Central Park")
 LINE -> Bot: Webhook event (MessageEvent with TextMessage)
 activate Bot
+
+Bot -> Security: verify_line_signature(x_line_signature)
+activate Security
+Security --> Bot: signature verified
+deactivate Security
+
+Bot -> Translation: detect_language(text)
+activate Translation
+Translation -> OpenAI: Request language detection
+activate OpenAI
+OpenAI --> Translation: Language code
+deactivate OpenAI
+Translation --> Bot: detected_language
+deactivate Translation
 
 alt USE_AI_PARSING is true
     Bot -> Utils: parse_user_request_with_ai(text)
@@ -32,9 +48,23 @@ else USE_AI_PARSING is false
 end
 
 alt location not found in query_params
-    Bot -> LINE: "Please share your location"
+    Bot -> Translation: translate_text(message, language)
+    activate Translation
+    Translation -> OpenAI: Request translation
+    activate OpenAI
+    OpenAI --> Translation: Translated message
+    deactivate OpenAI
+    Translation --> Bot: translated_message
+    deactivate Translation
+    
+    Bot -> LINE: translated_message
     LINE -> User: Location request
 else location found in query_params
+    Bot -> Security: verify_api_key(api_key)
+    activate Security
+    Security --> Bot: api_key verified
+    deactivate Security
+    
     Bot -> Finder: search_restaurants(query_params)
     activate Finder
     
@@ -57,7 +87,17 @@ User -> LINE: Share location
 LINE -> Bot: Webhook event (MessageEvent with LocationMessage)
 activate Bot
 
+Bot -> Security: verify_line_signature(x_line_signature)
+activate Security
+Security --> Bot: signature verified
+deactivate Security
+
 Bot -> Bot: Extract latitude/longitude
+Bot -> Security: verify_api_key(api_key)
+activate Security
+Security --> Bot: api_key verified
+deactivate Security
+
 Bot -> Finder: search_restaurants(location, radius, type)
 activate Finder
 
