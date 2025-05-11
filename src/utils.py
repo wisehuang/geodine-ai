@@ -4,9 +4,23 @@ import json
 import time
 from typing import Dict, Any, Tuple, List
 from openai import OpenAI
+from src.translation import translate_text, detect_language
+from src.language_pack import (
+    get_system_prompt, get_greeting_patterns, 
+    get_non_restaurant_keywords, get_message, 
+    get_restaurant_intent_functions
+)
 
 # Initialize OpenAI client
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
+# Language detection cache to avoid repeated API calls
+language_cache = {}
+MAX_CACHE_SIZE = 1000
+
+# Translation cache to avoid repeated API calls
+translation_cache = {}
+MAX_TRANSLATION_CACHE_SIZE = 1000
 
 def is_restaurant_related(text: str) -> Tuple[bool, str]:
     """
@@ -20,78 +34,47 @@ def is_restaurant_related(text: str) -> Tuple[bool, str]:
         - is_related: Boolean indicating if the input is related to restaurant finding
         - message: A message to send if not related
     """
-    # Simple keyword matching for common greetings to provide quick responses
-    greeting_patterns = [
-        r'^hi\b', r'^hello\b', r'^hey\b', r'^what\'?s up\b', 
-        r'^good morning\b', r'^good afternoon\b', r'^good evening\b',
-        r'^help\b', r'^howdy\b', r'^yo\b'
-    ]
+    # Detect language for potential reply message only
+    language = detect_language(text)
+    text_lower = text.lower()
     
-    # If matches greeting pattern, respond but indicate it's restaurant-related
-    for pattern in greeting_patterns:
-        if re.search(pattern, text.lower()):
-            return True, "Hello! I'm a restaurant recommendation bot. How can I help you find a restaurant today?"
+    # Get greeting patterns from language pack
+    greeting_patterns = get_greeting_patterns()
+    
+    # Check for greeting patterns
+    # For English input
+    if language == 'en':
+        for pattern in greeting_patterns:
+            if re.search(pattern, text_lower):
+                return True, get_message("greeting_short")
+    # For non-English input, translate each greeting pattern and check
+    else:
+        # Option 1: Check if the input starts with common greetings in their language
+        # (This avoids doing many translations for pattern matching)
+        # Translate a few key greetings to check against
+        hello_translated = translate_text("hello", language).lower()
+        hi_translated = translate_text("hi", language).lower()
+        hey_translated = translate_text("hey", language).lower()
+        help_translated = translate_text("help", language).lower()
+        
+        if (text_lower.startswith(hello_translated) or 
+            text_lower.startswith(hi_translated) or
+            text_lower.startswith(hey_translated) or
+            text_lower.startswith(help_translated)):
+            # Translate the greeting response
+            return True, get_message("greeting_short", language)
     
     # Use ChatGPT with function calling for more accurate intent classification
     if os.getenv("USE_AI_PARSING", "False").lower() == "true":
         try:
-            # Define functions that can be called, allowing the AI to classify the intent
-            functions = [
-                {
-                    "type": "function",
-                    "function": {
-                        "name": "restaurant_search",
-                        "description": "Search for restaurants based on user criteria",
-                        "parameters": {
-                            "type": "object",
-                            "properties": {
-                                "cuisine": {
-                                    "type": "string",
-                                    "description": "Type of cuisine (e.g., Japanese, Italian, etc.)"
-                                },
-                                "location": {
-                                    "type": "string",
-                                    "description": "Location for restaurant search"
-                                },
-                                "price_level": {
-                                    "type": "integer",
-                                    "description": "Price level (1-4)"
-                                },
-                                "open_now": {
-                                    "type": "boolean",
-                                    "description": "Whether the restaurant should be currently open"
-                                }
-                            }
-                        }
-                    }
-                },
-                {
-                    "type": "function",
-                    "function": {
-                        "name": "non_restaurant_query",
-                        "description": "Handle a query that is not related to restaurant search",
-                        "parameters": {
-                            "type": "object",
-                            "properties": {
-                                "query_type": {
-                                    "type": "string",
-                                    "description": "Type of query (e.g., weather, news, general chat, etc.)"
-                                },
-                                "explanation": {
-                                    "type": "string",
-                                    "description": "Why this is not a restaurant-related query"
-                                }
-                            },
-                            "required": ["query_type", "explanation"]
-                        }
-                    }
-                }
-            ]
+            # Get system prompt and functions from language pack
+            system_prompt = get_system_prompt("restaurant_intent")
+            functions = get_restaurant_intent_functions()
             
             response = client.chat.completions.create(
                 model="gpt-4o",
                 messages=[
-                    {"role": "system", "content": "You are a restaurant recommendation bot. Your main purpose is to help users find restaurants. Determine if the user's message is related to finding restaurants or if it's a different type of request."},
+                    {"role": "system", "content": system_prompt},
                     {"role": "user", "content": text}
                 ],
                 tools=functions,
@@ -114,7 +97,9 @@ def is_restaurant_related(text: str) -> Tuple[bool, str]:
                     # The AI determined this is not restaurant-related
                     function_args = json.loads(tool_call.function.arguments)
                     query_type = function_args.get("query_type", "")
-                    return False, f"I'm sorry, but I can only help with finding restaurants. I can't assist with {query_type} queries."
+                    
+                    # Get non-restaurant query message from language pack
+                    return False, get_message("non_restaurant_query", language, query_type=query_type)
             
             # If no function call, default to treating as restaurant-related
             return True, ""
@@ -124,16 +109,31 @@ def is_restaurant_related(text: str) -> Tuple[bool, str]:
             # Fall back to simpler checks if AI check fails
     
     # Simple keyword matching for non-restaurant queries as fallback
-    non_restaurant_keywords = [
-        "weather", "news", "stock", "movie", "film", "music", 
-        "translate", "calculator", "alarm", "reminder", "calendar",
-        "shopping", "buy", "purchase", "chat", "talk", "conversation"
-    ]
+    # Define English non-restaurant keywords only
+    non_restaurant_keywords = get_non_restaurant_keywords()
     
-    # Check for non-restaurant keywords
-    for keyword in non_restaurant_keywords:
-        if keyword in text.lower():
-            return False, f"I'm sorry, but I can only help with finding restaurants. I can't assist with {keyword}-related queries."
+    # For English input, check against English keywords
+    if language == 'en':
+        for keyword in non_restaurant_keywords:
+            if keyword in text_lower:
+                return False, get_message("non_restaurant_query", language, query_type=keyword)
+    # For non-English input, translate the input text to English and check against English keywords
+    else:
+        # This approach might be less accurate but avoids translating many keywords
+        # Alternatively, you could translate each keyword to the target language
+        translated_text_to_en = ""
+        try:
+            # Try to translate the input to English for keyword matching
+            translated_text_to_en = translate_text(text, "en").lower()
+        except Exception as e:
+            print(f"Error translating input to English: {str(e)}")
+            # If translation fails, skip this check
+            pass
+        
+        if translated_text_to_en:
+            for keyword in non_restaurant_keywords:
+                if keyword in translated_text_to_en:
+                    return False, get_message("non_restaurant_query", language, query_type=keyword)
     
     # Default to assuming it's restaurant-related if no other conditions matched
     return True, ""
@@ -148,7 +148,9 @@ def parse_user_request_with_ai(text: str) -> Dict[str, Any]:
     - Type: Japanese food
     - Price: Medium
     """
-    prompt = f"""
+    # Use English prompts regardless of input language
+    system_prompt = "You are a helpful assistant that extracts structured data from user requests."
+    user_prompt = f"""
     Extract the following information from this user request: "{text}"
     - Restaurant type or cuisine (e.g., japanese, chinese, italian, etc.)
     - Location (e.g., a place name, landmark, etc.)
@@ -168,8 +170,8 @@ def parse_user_request_with_ai(text: str) -> Dict[str, Any]:
         response = client.chat.completions.create(
             model="gpt-4o",
             messages=[
-                {"role": "system", "content": "You are a helpful assistant that extracts structured data from user requests."},
-                {"role": "user", "content": prompt}
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
             ],
             temperature=0.1,
             response_format={"type": "json_object"}
@@ -183,6 +185,7 @@ def parse_user_request_with_ai(text: str) -> Dict[str, Any]:
         
         # Map cuisine to appropriate format if present
         cuisine_types = {
+            # English
             "japanese": "japanese restaurant",
             "chinese": "chinese restaurant",
             "italian": "italian restaurant",
@@ -191,12 +194,29 @@ def parse_user_request_with_ai(text: str) -> Dict[str, Any]:
             "korean": "korean restaurant",
             "vegetarian": "vegetarian restaurant",
             "coffee": "cafe",
-            "dessert": "dessert"
+            "dessert": "dessert",
+            # Chinese
+            "日本": "japanese restaurant",
+            "日式": "japanese restaurant",
+            "中餐": "chinese restaurant",
+            "中式": "chinese restaurant",
+            "義大利": "italian restaurant",
+            "義式": "italian restaurant",
+            "美式": "american restaurant",
+            "泰式": "thai restaurant",
+            "泰國": "thai restaurant",
+            "韓式": "korean restaurant",
+            "韓國": "korean restaurant",
+            "素食": "vegetarian restaurant",
+            "咖啡": "cafe",
+            "甜點": "dessert",
+            "甜食": "dessert"
         }
         
         if "keyword" in result and result["keyword"]:
-            for cuisine_en, cuisine_query in cuisine_types.items():
-                if cuisine_en in result["keyword"].lower():
+            keyword_lower = result["keyword"].lower()
+            for cuisine_key, cuisine_query in cuisine_types.items():
+                if cuisine_key in keyword_lower:
                     result["keyword"] = cuisine_query
                     break
         
@@ -207,7 +227,7 @@ def parse_user_request_with_ai(text: str) -> Dict[str, Any]:
         # Fall back to regex-based parsing if OpenAI fails
         return parse_user_request(text)
 
-def analyze_and_select_restaurants(restaurants: List[Dict[str, Any]], user_query: str, max_results: int = 3) -> List[Dict[str, Any]]:
+def analyze_and_select_restaurants(restaurants: List[Dict[str, Any]], user_query: str, max_results: int = 3, language: str = "en") -> List[Dict[str, Any]]:
     """
     Use ChatGPT to analyze restaurants from Google Maps API and select the best matches based on user request
     
@@ -215,6 +235,7 @@ def analyze_and_select_restaurants(restaurants: List[Dict[str, Any]], user_query
         restaurants: List of restaurant data from Google Maps API
         user_query: The original user request text
         max_results: Maximum number of restaurants to return
+        language: The language to use for responses ('en', 'zh-tw', 'ja', 'ko', etc.)
         
     Returns:
         List of selected restaurants with additional explanation
@@ -228,6 +249,10 @@ def analyze_and_select_restaurants(restaurants: List[Dict[str, Any]], user_query
     # Format restaurant data for ChatGPT
     restaurants_json = json.dumps(restaurants_to_analyze, ensure_ascii=False)
     
+    # Get system prompt from language pack
+    system_prompt = get_system_prompt("restaurant_analyzer")
+    
+    # Use English as the prompt language
     prompt = f"""
     I need you to analyze these restaurants and select {max_results} that best match the user's request.
     
@@ -240,13 +265,16 @@ def analyze_and_select_restaurants(restaurants: List[Dict[str, Any]], user_query
     2. What makes it stand out from the others
     3. Any specific recommendations based on available data
     
+    The user's language is: {language}
+    Please provide your explanations in this language.
+    
     Return your response as JSON with the following structure:
     {{
         "selected_restaurants": [
             {{
                 "restaurant": {{original restaurant object}},
-                "explanation": "Why this restaurant is a good match",
-                "highlight": "Key feature to highlight"
+                "explanation": "Why this restaurant is a good match (in the user's language)",
+                "highlight": "Key feature to highlight (in the user's language)"
             }}
         ]
     }}
@@ -264,7 +292,7 @@ def analyze_and_select_restaurants(restaurants: List[Dict[str, Any]], user_query
                 response = client.chat.completions.create(
                     model="gpt-4o",  # Use a model with larger context
                     messages=[
-                        {"role": "system", "content": "You are a helpful assistant that analyzes restaurant options to find the best matches for user requests."},
+                        {"role": "system", "content": system_prompt},
                         {"role": "user", "content": prompt}
                     ],
                     temperature=0.3,
@@ -309,16 +337,26 @@ def parse_user_request(text: str) -> Dict[str, Any]:
         "type": "restaurant"
     }
     
-    # Parse location (using simple rules, actual application might need more complex NLP)
-    location_match = re.search(r'(at|near|find)(\w+?)(nearby|around|beside)', text)
-    if location_match:
-        location_name = location_match.group(2)
-        params["location_name"] = location_name
-        # Note: Location name needs to be converted to geographic coordinates
-        # In a real application, we could use Google Geocoding API
+    # Detect language
+    language = detect_language(text)
+    text_lower = text.lower()
     
-    # Parse restaurant type
+    # Parse location (using simple rules, actual application might need more complex NLP)
+    if language == "en":
+        location_match = re.search(r'(at|near|find)(\w+?)(nearby|around|beside)', text_lower)
+        if location_match:
+            location_name = location_match.group(2)
+            params["location_name"] = location_name
+    else:
+        # Chinese location matching pattern (near/at... station/place)
+        location_match = re.search(r'(在|附近|靠近|找)([^的]+?)(站|處|地方|餐廳)', text_lower)
+        if location_match:
+            location_name = location_match.group(2)
+            params["location_name"] = location_name
+    
+    # Parse restaurant type with bilingual support
     cuisine_types = {
+        # English cuisines
         "japanese": "japanese restaurant",
         "chinese": "chinese restaurant",
         "italian": "italian restaurant",
@@ -327,25 +365,54 @@ def parse_user_request(text: str) -> Dict[str, Any]:
         "korean": "korean restaurant",
         "vegetarian": "vegetarian restaurant",
         "coffee": "cafe",
-        "dessert": "dessert"
+        "dessert": "dessert",
+        # Chinese cuisine keywords
+        "日本": "japanese restaurant",
+        "日式": "japanese restaurant",
+        "中餐": "chinese restaurant",
+        "中式": "chinese restaurant",
+        "義大利": "italian restaurant",
+        "義式": "italian restaurant",
+        "美式": "american restaurant",
+        "泰式": "thai restaurant",
+        "泰國": "thai restaurant",
+        "韓式": "korean restaurant",
+        "韓國": "korean restaurant",
+        "素食": "vegetarian restaurant",
+        "咖啡": "cafe",
+        "甜點": "dessert",
+        "甜食": "dessert"
     }
     
-    for cuisine_en, cuisine_query in cuisine_types.items():
-        if cuisine_en in text.lower():
+    for cuisine_keyword, cuisine_query in cuisine_types.items():
+        if cuisine_keyword in text_lower:
             params["keyword"] = cuisine_query
             break
     
-    # Parse price level
-    if "cheap" in text or "affordable" in text:
-        params["price_level"] = 1
-    elif "luxury" in text or "high-end" in text:
-        params["price_level"] = 4
-    elif "medium" in text:
-        params["price_level"] = 2
+    # Parse price level with bilingual support
+    if language == "en":
+        if "cheap" in text_lower or "affordable" in text_lower or "inexpensive" in text_lower:
+            params["price_level"] = 1
+        elif "luxury" in text_lower or "high-end" in text_lower or "expensive" in text_lower:
+            params["price_level"] = 4
+        elif "medium" in text_lower or "moderate" in text_lower:
+            params["price_level"] = 2
+    else:
+        # Chinese price keywords
+        if "便宜" in text_lower or "平價" in text_lower or "經濟" in text_lower:
+            params["price_level"] = 1
+        elif "豪華" in text_lower or "高級" in text_lower or "貴" in text_lower:
+            params["price_level"] = 4
+        elif "中價" in text_lower or "適中" in text_lower:
+            params["price_level"] = 2
     
-    # Parse operating status
-    if "open now" in text or "currently open" in text:
-        params["open_now"] = True
+    # Parse operating status with bilingual support
+    if language == "en":
+        if "open now" in text_lower or "currently open" in text_lower:
+            params["open_now"] = True
+    else:
+        if "現在營業" in text_lower or "現在開" in text_lower or "營業中" in text_lower:
+            params["open_now"] = True
     
     return params
 

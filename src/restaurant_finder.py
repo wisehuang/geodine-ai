@@ -24,6 +24,7 @@ class RestaurantSearchRequest(BaseModel):
     type: str = "restaurant"
     price_level: Optional[int] = None
     open_now: bool = False
+    language: Optional[str] = None
 
 class RestaurantResponse(BaseModel):
     name: str
@@ -50,6 +51,7 @@ async def search_restaurants_api(request: RestaurantSearchRequest):
     - type: Place type (default is restaurant)
     - price_level: Price level (0-4)
     - open_now: Whether to show only currently open restaurants
+    - language: Language for the search
     
     Returns:
     - A list of restaurants with name, address, rating, and other information
@@ -108,6 +110,10 @@ def search_restaurants(params):
     if "price_level" in params and params["price_level"] is not None:
         api_params["min_price"] = params["price_level"]
         api_params["max_price"] = params["price_level"]
+    
+    # Add language parameter if provided
+    if "language" in params and params["language"]:
+        api_params["language"] = params["language"]
     
     # Debug log for API call
     print(f"Calling Google Maps API with params: {api_params}")

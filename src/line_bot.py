@@ -14,6 +14,7 @@ from typing import Optional, Dict, Any, List
 
 from src.restaurant_finder import search_restaurants
 from src.utils import parse_user_request, parse_user_request_with_ai, analyze_and_select_restaurants, is_restaurant_related
+from src.translation import detect_language, translate_text
 from src.database import init_db, save_user_location, get_user_location, get_user_location_for_search
 from dotenv import load_dotenv
 
@@ -109,17 +110,28 @@ def safe_reply_or_push(event, messages):
             # For other LINE API errors, log them
             print(f"LINE API Error: {str(e)}")
 
-def search_and_push(query_params, user_id, original_query=""):
+def search_and_push(query_params, user_id, original_query="", language="en"):
     """Search for restaurants using ChatGPT to select and push to user as carousel"""
     try:
+        # Add language parameter to query
+        query_params["language"] = language
+        
+        # English messages - will be translated if needed
+        messages = {
+            'no_results': "Sorry, I couldn't find any restaurants matching your criteria.",
+            'error': "I encountered an error while searching: "
+        }
+        
         # Search for restaurants
         all_results = search_restaurants(query_params)
         
         # If no results found
         if not all_results or len(all_results) == 0:
+            response_text = translate_text(messages['no_results'], language)
+                
             line_bot_api.push_message(
                 user_id,
-                TextSendMessage(text="Sorry, I couldn't find any restaurants matching your criteria.")
+                TextSendMessage(text=response_text)
             )
             return
         
@@ -129,7 +141,8 @@ def search_and_push(query_params, user_id, original_query=""):
         selected_results = analyze_and_select_restaurants(
             restaurants=all_results, 
             user_query=original_query or "Find a good restaurant nearby",
-            max_results=3
+            max_results=3,
+            language=language
         )
         
         # Check if we have selected restaurants
@@ -139,26 +152,46 @@ def search_and_push(query_params, user_id, original_query=""):
             selected_results = [{"restaurant": r, "explanation": "", "highlight": ""} for r in all_results[:3]]
         
         # Create carousel with the selected restaurants
-        carousel_message = create_restaurant_carousel(selected_results)
+        carousel_message = create_restaurant_carousel(selected_results, language)
         
         # Use push message to send the carousel
+        alt_text_template = f"Here are {len(selected_results)} recommended restaurants for you"
+        alt_text = translate_text(alt_text_template, language)
+            
         line_bot_api.push_message(
             user_id,
             FlexSendMessage(
-                alt_text=f"Here are {len(selected_results)} recommended restaurants for you",
+                alt_text=alt_text,
                 contents=carousel_message
             )
         )
     except Exception as e:
         print(f"Error searching restaurants: {str(e)}")
+        
+        error_message = translate_text(messages['error'], language) + str(e)
+        
         line_bot_api.push_message(
             user_id,
-            TextSendMessage(text=f"I encountered an error while searching: {str(e)}")
+            TextSendMessage(text=error_message)
         )
 
-def create_restaurant_carousel(selected_restaurants):
+def create_restaurant_carousel(selected_restaurants, language="en"):
     """Create a carousel message with the selected restaurants"""
     bubbles = []
+    
+    # English UI labels - will be translated as needed
+    ui_labels = {
+        'view_map': "View in Google Maps",
+        'rating': "Rating",
+        'reviews': "reviews",
+        'price': "Price",
+        'address': "Address"
+    }
+    
+    # Translate all UI labels
+    translated_labels = {}
+    for key, value in ui_labels.items():
+        translated_labels[key] = translate_text(value, language)
     
     for selected in selected_restaurants:
         restaurant = selected.get("restaurant", {})
@@ -196,7 +229,7 @@ def create_restaurant_carousel(selected_restaurants):
                         "type": "button",
                         "action": {
                             "type": "uri",
-                            "label": "View in Google Maps",
+                            "label": translated_labels['view_map'],
                             "uri": f"https://www.google.com/maps/place/?q=place_id:{restaurant.get('place_id', '')}"
                         },
                         "style": "primary"
@@ -207,6 +240,8 @@ def create_restaurant_carousel(selected_restaurants):
         
         # Add rating if available
         if "rating" in restaurant:
+            rating_text = f"{translated_labels['rating']}: {restaurant.get('rating', 'N/A')} ({restaurant.get('user_ratings_total', 0)} {translated_labels['reviews']})"
+                
             bubble["body"]["contents"].append({
                 "type": "box",
                 "layout": "baseline",
@@ -214,10 +249,11 @@ def create_restaurant_carousel(selected_restaurants):
                 "contents": [
                     {
                         "type": "text",
-                        "text": f"Rating: {restaurant.get('rating', 'N/A')} ⭐",
+                        "text": rating_text,
                         "size": "sm",
                         "color": "#999999",
-                        "flex": 2
+                        "margin": "md",
+                        "flex": 0
                     }
                 ]
             })
@@ -228,6 +264,9 @@ def create_restaurant_carousel(selected_restaurants):
             # Make sure price_level is not None and convert to int
             price_level = int(price_level) if price_level is not None else 0
             price_symbols = "💰" * price_level
+            
+            price_text = f"{translated_labels['price']}: {price_symbols or 'N/A'}"
+                
             bubble["body"]["contents"].append({
                 "type": "box",
                 "layout": "baseline",
@@ -235,7 +274,7 @@ def create_restaurant_carousel(selected_restaurants):
                 "contents": [
                     {
                         "type": "text",
-                        "text": f"Price: {price_symbols or 'N/A'}",
+                        "text": price_text,
                         "size": "sm",
                         "color": "#999999",
                         "flex": 2
@@ -245,6 +284,8 @@ def create_restaurant_carousel(selected_restaurants):
             
         # Add address if available
         if "address" in restaurant:
+            address_text = f"{translated_labels['address']}: {restaurant.get('address', 'N/A')}"
+                
             bubble["body"]["contents"].append({
                 "type": "box",
                 "layout": "baseline",
@@ -252,7 +293,7 @@ def create_restaurant_carousel(selected_restaurants):
                 "contents": [
                     {
                         "type": "text",
-                        "text": f"Address: {restaurant.get('address', 'N/A')}",
+                        "text": address_text,
                         "size": "sm",
                         "color": "#999999",
                         "wrap": True
@@ -299,35 +340,85 @@ def handle_text_message(event):
     user_id = event.source.user_id
     text = event.message.text
     
+    # Detect language
+    language = detect_language(text)
+    print(f"Detected language: {language}")
+    
     # Save original query for later use
     original_query = text
+    
+    # Define English messages (will be translated as needed)
+    messages = {
+        'not_restaurant_related': "Sorry, I can only help with restaurant-related queries.",
+        'greeting': "Hello! I'm a restaurant recommendation bot. What type of restaurant would you like to find today?",
+        'location_needed': "Please share your location first so I can find restaurants nearby.",
+        'searching_generic': "Looking for restaurants near your location...",
+        'location_request': "Please share your location so I can find restaurants nearby",
+        'location_error': "I couldn't determine your location. Please share your location and try again.",
+        'searching_criteria': "Searching for restaurants matching your criteria..."
+    }
     
     # First, check if the message is related to finding a restaurant
     is_related, message = is_restaurant_related(text)
     if not is_related:
+        response_text = message or messages['not_restaurant_related']
+        # Translate if not English
+        if language != 'en':
+            response_text = translate_text(response_text, language)
+            
         safe_reply_or_push(
             event,
-            TextSendMessage(text=message)
+            TextSendMessage(text=response_text)
         )
         return
     
     # If we got a greeting message with a response, send it
     if message:
+        # If no specific message in the result, use the default greeting
+        response_text = message or messages['greeting']
+        # Translate if not English
+        if language != 'en':
+            response_text = translate_text(response_text, language)
+            
         safe_reply_or_push(
             event,
-            TextSendMessage(text=message)
+            TextSendMessage(text=response_text)
         )
         return
     
     # Check if text is "Any" (user wants generic recommendations)
-    if text.lower() in ["any", "anything", "general"]:
+    # Define only English generic terms
+    generic_terms_en = ["any", "anything", "general", "whatever", "any restaurant"]
+    
+    # Translate generic terms to the user's language if needed
+    is_generic_query = False
+    
+    # First check if any English term is in the input (for English users)
+    if language == 'en':
+        for term in generic_terms_en:
+            if term.lower() in text.lower():
+                is_generic_query = True
+                break
+    else:
+        # For non-English users, translate each generic term to their language
+        # and check if any of those translations appear in their input
+        for term in generic_terms_en:
+            translated_term = translate_text(term, language).lower()
+            if translated_term in text.lower():
+                is_generic_query = True
+                break
+    
+    if is_generic_query:
         # Get user's location directly in the correct format for Google Maps API
         location = get_user_location_for_search(user_id)
         
         if not location:
+            # Translate the message
+            response_text = translate_text(messages['location_needed'], language)
+            
             safe_reply_or_push(
                 event,
-                TextSendMessage(text="Please share your location first so I can find restaurants nearby.")
+                TextSendMessage(text=response_text)
             )
             return
             
@@ -339,13 +430,15 @@ def handle_text_message(event):
         }
         
         # Inform user and search
+        response_text = translate_text(messages['searching_generic'], language)
+        
         safe_reply_or_push(
             event,
-            TextSendMessage(text="Looking for restaurants near your location...")
+            TextSendMessage(text=response_text)
         )
         
         # Then search and push results
-        search_and_push(query_params, user_id, original_query)
+        search_and_push(query_params, user_id, original_query, language)
         return
     
     # Parse user request (with AI if enabled)
@@ -369,31 +462,37 @@ def handle_text_message(event):
             print(f"Using saved location: {location}")
         else:
             # If no location, ask user to share location
+            response_text = translate_text(messages['location_request'], language)
+            
             safe_reply_or_push(
                 event,
-                TextSendMessage(text="Please share your location so I can find restaurants nearby")
+                TextSendMessage(text=response_text)
             )
             return
     
     # Ensure location is not None
     if "location" not in query_params or not query_params["location"]:
+        response_text = translate_text(messages['location_error'], language)
+        
         safe_reply_or_push(
             event,
-            TextSendMessage(text="I couldn't determine your location. Please share your location and try again.")
+            TextSendMessage(text=response_text)
         )
         return
     
     # First acknowledge the request
+    response_text = translate_text(messages['searching_criteria'], language)
+    
     safe_reply_or_push(
         event,
-        TextSendMessage(text="Searching for restaurants matching your criteria...")
+        TextSendMessage(text=response_text)
     )
     
     # Final debug log before search
     print(f"Final query params before search: {query_params}")
     
     # Then search and push results
-    search_and_push(query_params, user_id, original_query)
+    search_and_push(query_params, user_id, original_query, language)
 
 @handler.add(MessageEvent, message=LocationMessage)
 def handle_location_message(event):
@@ -413,7 +512,10 @@ def handle_location_message(event):
         address=address
     )
     
-    # Ask user about restaurant preferences
+    # Detect language from address if available, otherwise default to English
+    language = detect_language(address) if address else "en"
+    
+    # English templates for preference questions
     preference_questions = [
         "I've saved your location! What type of restaurant are you looking for?",
         "For example, you can say:",
@@ -422,6 +524,13 @@ def handle_location_message(event):
         "- \"Vegetarian restaurants open now\"",
         "- Or just say \"Any\" for general recommendations"
     ]
+    
+    # Translate each line if needed
+    if language != 'en':
+        translated_questions = []
+        for question in preference_questions:
+            translated_questions.append(translate_text(question, language))
+        preference_questions = translated_questions
     
     # Use safe reply method
     safe_reply_or_push(
