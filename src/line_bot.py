@@ -224,7 +224,10 @@ def create_restaurant_carousel(selected_restaurants):
         
         # Add price level if available
         if "price_level" in restaurant:
-            price_symbols = "💰" * restaurant.get("price_level", 0)
+            price_level = restaurant.get("price_level")
+            # Make sure price_level is not None and convert to int
+            price_level = int(price_level) if price_level is not None else 0
+            price_symbols = "💰" * price_level
             bubble["body"]["contents"].append({
                 "type": "box",
                 "layout": "baseline",
