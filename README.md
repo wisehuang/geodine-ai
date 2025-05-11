@@ -16,7 +16,7 @@ A LINE Bot application for finding restaurants based on user requirements using 
 
 ## Architecture
 
-![Sequence Diagram](GeoDine-AI Sequence Diagram.png)
+![Sequence Diagram](GeoDine-AI%20Sequence%20Diagram.png)
 
 The application consists of several key components:
 
