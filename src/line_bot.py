@@ -1,7 +1,7 @@
 import os
 import time
 from fastapi import APIRouter, Request, HTTPException, Depends, Header
-from linebot import LineBotApi, WebhookHandler
+from linebot import LineBotApi
 from linebot.exceptions import InvalidSignatureError, LineBotApiError
 from linebot.models import (
     MessageEvent, TextMessage, LocationMessage, 
@@ -10,12 +10,13 @@ from linebot.models import (
     URIAction
 )
 from pydantic import BaseModel
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, Tuple
 
 from src.restaurant_finder import search_restaurants
 from src.utils import parse_user_request, parse_user_request_with_ai, analyze_and_select_restaurants, is_restaurant_related
 from src.translation import detect_language, translate_text
 from src.database import init_db, save_user_location, get_user_location, get_user_location_for_search
+from src.security import verify_line_signature, line_handler
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -26,7 +27,6 @@ init_db()
 
 # Set up LINE Bot API
 line_bot_api = LineBotApi(os.getenv("LINE_CHANNEL_ACCESS_TOKEN"))
-handler = WebhookHandler(os.getenv("LINE_CHANNEL_SECRET"))
 
 # Flag to control whether to use AI for parsing
 USE_AI_PARSING = os.getenv("USE_AI_PARSING", "False").lower() == "true"
@@ -41,22 +41,19 @@ class LineWebhookRequest(BaseModel):
     events: List[Dict[str, Any]]
 
 @router.post("/webhook", operation_id="line_webhook")
-async def line_webhook(
-    request: Request,
-    x_line_signature: Optional[str] = Header(None)
-):
+async def line_webhook(request: Request, handler_and_body: Tuple = Depends(verify_line_signature)):
     """
     Handle webhook events from the LINE platform
     """
-    body = await request.body()
-    body_str = body.decode("utf-8")
-    
     try:
+        # Unpack the handler and body from security function
+        handler, body_str = handler_and_body
+        
         # Print webhook event for debugging
         print(f"Received LINE webhook: {body_str}")
-        handler.handle(body_str, x_line_signature)
-    except InvalidSignatureError:
-        raise HTTPException(status_code=400, detail="Invalid LINE signature")
+        
+        # Handle webhook with verified handler
+        handler.handle(body_str, None)  # Signature already verified
     except Exception as e:
         print(f"Error handling webhook: {str(e)}")
         # Don't raise exception here to always return 200 OK to LINE
@@ -203,7 +200,7 @@ def create_restaurant_carousel(selected_restaurants, language="en"):
             "type": "bubble",
             "hero": {
                 "type": "image",
-                "url": restaurant.get("photo_url", "https://via.placeholder.com/300x200"),
+                "url": f"/restaurants/photo/{restaurant.get('photo_reference')}" if restaurant.get("photo_reference") else "https://via.placeholder.com/300x200",
                 "size": "full",
                 "aspectRatio": "20:13",
                 "aspectMode": "cover"
@@ -336,7 +333,7 @@ def create_restaurant_carousel(selected_restaurants, language="en"):
     
     return carousel
 
-@handler.add(MessageEvent, message=TextMessage)
+@line_handler.add(MessageEvent, message=TextMessage)
 def handle_text_message(event):
     """Handle text messages, parse user requests"""
     user_id = event.source.user_id
@@ -496,7 +493,7 @@ def handle_text_message(event):
     # Then search and push results
     search_and_push(query_params, user_id, original_query, language)
 
-@handler.add(MessageEvent, message=LocationMessage)
+@line_handler.add(MessageEvent, message=LocationMessage)
 def handle_location_message(event):
     """Handle location messages, save to DB and ask for food/drink preferences"""
     user_id = event.source.user_id

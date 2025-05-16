@@ -3,9 +3,11 @@ import hmac
 import hashlib
 import time
 from typing import Optional
-from fastapi import HTTPException, Security, Header
+from fastapi import HTTPException, Security, Header, Request
 from fastapi.security import APIKeyHeader
 from dotenv import load_dotenv
+from linebot import WebhookHandler
+from linebot.exceptions import InvalidSignatureError
 
 # Load environment variables
 load_dotenv()
@@ -18,6 +20,14 @@ api_key_header = APIKeyHeader(name=API_KEY_NAME, auto_error=True)
 API_KEY = os.getenv("API_KEY")
 if not API_KEY:
     raise ValueError("API_KEY environment variable is not set")
+
+# Get LINE channel secret from environment
+LINE_CHANNEL_SECRET = os.getenv("LINE_CHANNEL_SECRET")
+if not LINE_CHANNEL_SECRET:
+    raise ValueError("LINE_CHANNEL_SECRET environment variable is not set")
+
+# Create LINE webhook handler
+line_handler = WebhookHandler(LINE_CHANNEL_SECRET)
 
 def verify_api_key(api_key: str = Security(api_key_header)) -> bool:
     """
@@ -37,9 +47,10 @@ def verify_api_key(api_key: str = Security(api_key_header)) -> bool:
     
     return True
 
-def verify_line_signature(x_line_signature: Optional[str] = Header(None)) -> bool:
+async def verify_line_signature(request: Request, x_line_signature: Optional[str] = Header(None)) -> WebhookHandler:
     """
-    Verify the LINE signature from the request header
+    Verify the LINE signature from the request header and body
+    Returns the LINE webhook handler if signature is valid
     """
     if not x_line_signature:
         raise HTTPException(
@@ -47,6 +58,18 @@ def verify_line_signature(x_line_signature: Optional[str] = Header(None)) -> boo
             detail="LINE signature is missing"
         )
     
-    # The actual signature verification is handled by the LINE SDK
-    # This is just a placeholder to ensure the header exists
-    return True 
+    # Get request body for signature verification
+    body = await request.body()
+    body_str = body.decode("utf-8")
+    
+    # Verify signature
+    try:
+        line_handler.verify(body_str, x_line_signature)
+    except InvalidSignatureError:
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid LINE signature"
+        )
+    
+    # Return the handler and body for processing
+    return line_handler, body_str 
