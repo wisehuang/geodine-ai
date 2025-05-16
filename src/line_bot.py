@@ -28,6 +28,9 @@ init_db()
 # Set up LINE Bot API
 line_bot_api = LineBotApi(os.getenv("LINE_CHANNEL_ACCESS_TOKEN"))
 
+# Get base URL from environment or use a default
+BASE_URL = os.getenv("BASE_URL", "https://api.example.com")
+
 # Flag to control whether to use AI for parsing
 USE_AI_PARSING = os.getenv("USE_AI_PARSING", "False").lower() == "true"
 
@@ -200,7 +203,7 @@ def create_restaurant_carousel(selected_restaurants, language="en"):
             "type": "bubble",
             "hero": {
                 "type": "image",
-                "url": f"/restaurants/photo/{restaurant.get('photo_reference')}" if restaurant.get("photo_reference") else "https://via.placeholder.com/300x200",
+                "url": restaurant.get("photo_url", "https://via.placeholder.com/300x200"),
                 "size": "full",
                 "aspectRatio": "20:13",
                 "aspectMode": "cover"
