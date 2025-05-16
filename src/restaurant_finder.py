@@ -181,10 +181,14 @@ def search_restaurants(params):
     # Process results
     restaurants = []
     for place in places_result.get("results", []):
-        # Get photo reference (if available)
-        photo_reference = None
+        # Calculate distance (for more accurate distance, use Distance Matrix API)
+        # This is a simplified calculation method
+        
+        # Get photo URL (if available)
+        photo_url = None
         if "photos" in place and place["photos"]:
             photo_reference = place["photos"][0]["photo_reference"]
+            photo_url = f"https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photoreference={photo_reference}&key={os.getenv('GOOGLE_MAPS_API_KEY')}"
         
         restaurant = {
             "name": place["name"],
@@ -193,7 +197,7 @@ def search_restaurants(params):
             "rating": place.get("rating"),
             "user_ratings_total": place.get("user_ratings_total"),
             "price_level": place.get("price_level"),
-            "photo_reference": photo_reference  # Store photo reference instead of URL
+            "photo_url": photo_url
         }
         
         restaurants.append(restaurant)
