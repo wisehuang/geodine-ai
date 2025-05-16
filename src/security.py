@@ -64,7 +64,7 @@ async def verify_line_signature(request: Request, x_line_signature: Optional[str
     
     # Verify signature
     try:
-        line_handler.verify(body_str, x_line_signature)
+        line_handler.validate_signature(body_str, x_line_signature)
     except InvalidSignatureError:
         raise HTTPException(
             status_code=401,
