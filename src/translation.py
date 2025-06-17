@@ -93,7 +93,7 @@ def detect_language(text: str) -> str:
         response = client.chat.completions.create(
             model="gpt-4o",
             messages=[
-                {"role": "system", "content": "You are a language detector. Identify the language of the text and respond with the appropriate language code (e.g., 'en', 'zh-tw', 'ja', 'ko', etc.)."},
+                {"role": "system", "content": "You are a language detector. Identify the language of the text and respond with the appropriate language code (e.g., 'en', 'zh-tw', 'ja', 'ko', etc.). If the language is any variant of Chinese (such as zh, zh-cn, zh-hk, zh-tw), always respond with 'zh-tw'."},
                 {"role": "user", "content": text[:150]}  # Only send first 150 chars
             ],
             temperature=0,
