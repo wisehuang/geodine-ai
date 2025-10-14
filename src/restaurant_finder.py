@@ -1,9 +1,10 @@
 import os
 import googlemaps
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Response
 from pydantic import BaseModel
 from typing import List, Tuple, Dict, Any, Optional, Union
 from dotenv import load_dotenv
+import requests
 
 from src.security import verify_api_key
 
@@ -36,7 +37,7 @@ class RestaurantResponse(BaseModel):
     user_ratings_total: Optional[int] = None
     price_level: Optional[int] = None
     distance: Optional[int] = None
-    photo_url: Optional[str] = None
+    photo_reference: Optional[str] = None  # Store photo reference instead of URL
 
 @router.post(
     "/search",
@@ -68,6 +69,45 @@ async def search_restaurants_api(request: RestaurantSearchRequest):
         return results
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error searching for restaurants: {str(e)}")
+
+@router.get(
+    "/photo/{photo_reference}",
+    operation_id="get_place_photo",
+    dependencies=[Depends(verify_api_key)]
+)
+async def get_place_photo(photo_reference: str, maxwidth: int = 400):
+    """
+    Proxy endpoint for Google Maps Place Photos API
+    
+    This endpoint securely retrieves a photo from Google Maps without exposing the API key
+    
+    Parameters:
+    - photo_reference: The photo reference string from Google Maps API
+    - maxwidth: Maximum width of the photo (default: 400)
+    
+    Returns:
+    - The photo as a binary response
+    
+    Security:
+    - Requires valid API key in X-API-Key header
+    """
+    try:
+        # Construct the Google Maps photo URL with our API key
+        url = f"https://maps.googleapis.com/maps/api/place/photo?maxwidth={maxwidth}&photoreference={photo_reference}&key={api_key}"
+        
+        # Make the request to Google Maps
+        response = requests.get(url, stream=True)
+        
+        # Return the image with appropriate content type
+        return Response(
+            content=response.content,
+            media_type=response.headers.get("content-type", "image/jpeg"),
+            headers={
+                "Cache-Control": "public, max-age=86400"  # Cache for 1 day
+            }
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error retrieving photo: {str(e)}")
 
 def search_restaurants(params):
     """

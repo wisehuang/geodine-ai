@@ -215,6 +215,10 @@ The application implements several security measures:
    - All sensitive credentials are stored in environment variables
    - The `.env` file should never be committed to version control
 
+4. **Photo URL Security**:
+   - When displaying restaurant photos, ensure you use fully qualified URLs (https://...) 
+   - LINE API requires absolute URLs for images in Flex Messages
+
 ## Testing
 
 ### API Testing
