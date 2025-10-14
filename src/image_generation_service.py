@@ -102,7 +102,7 @@ class ImageGenerationService:
                 self.API_ENDPOINT,
                 headers=self.headers,
                 json=payload,
-                timeout=60
+                timeout=300
             )
 
             response.raise_for_status()
@@ -140,7 +140,7 @@ class ImageGenerationService:
                 return None
 
         except requests.exceptions.Timeout:
-            print("Error: Request timed out after 60 seconds")
+            print("Error: Request timed out after 300 seconds")
             return None
         except requests.exceptions.HTTPError as e:
             print(f"HTTP Error generating image: {e}")
