@@ -46,7 +46,23 @@ def verify_line_signature(x_line_signature: Optional[str] = Header(None)) -> boo
             status_code=401,
             detail="LINE signature is missing"
         )
-    
+
     # The actual signature verification is handled by the LINE SDK
     # This is just a placeholder to ensure the header exists
-    return True 
+    return True
+
+
+def validate_api_key(api_key: Optional[str]) -> bool:
+    """
+    Validate API key for broadcast and other protected endpoints
+
+    Args:
+        api_key: API key from request header
+
+    Returns:
+        True if valid, False otherwise
+    """
+    if not api_key:
+        return False
+
+    return hmac.compare_digest(api_key, API_KEY) 

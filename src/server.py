@@ -6,6 +6,7 @@ import uvicorn
 
 from src.line_bot import router as line_router
 from src.restaurant_finder import router as restaurant_router
+from src.broadcast_router import router as broadcast_router
 
 # Load environment variables
 load_dotenv()
@@ -16,13 +17,14 @@ port = os.getenv("PORT", "8000")
 
 # Create FastAPI application
 app = FastAPI(
-    title="Restaurant Finder Bot",
-    description="LINE Bot for finding restaurants based on user requirements using Google Maps"
+    title="GeoDine-AI Multi-Bot Platform",
+    description="Multi-bot LINE platform for restaurant finding and weather outfit recommendations"
 )
 
 # Register routers
 app.include_router(line_router)
 app.include_router(restaurant_router)
+app.include_router(broadcast_router)
 
 # Create MCP server
 mcp = FastApiMCP(

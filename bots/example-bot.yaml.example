@@ -1,0 +1,33 @@
+# Example bot configuration file
+# Copy this file and remove the .example extension to create a new bot
+# Example: cp example-bot.yaml.example my-bot.yaml
+
+# Unique identifier for the bot (use lowercase, hyphens for spaces)
+bot_id: "example-bot"
+
+# Human-readable name for the bot
+name: "Example Food Bot"
+
+# LINE channel credentials
+# You can use environment variables by wrapping them in ${VAR_NAME}
+channel_access_token: "${EXAMPLE_BOT_ACCESS_TOKEN}"
+channel_secret: "${EXAMPLE_BOT_SECRET}"
+
+# Optional description
+description: "An example food recommendation bot"
+
+# Custom webhook path (optional, defaults to /line/{bot_id}/webhook)
+# webhook_path: "/line/example-bot/webhook"
+
+# Whether to use AI for parsing user requests (default: true)
+use_ai_parsing: true
+
+# Default search radius in meters (default: 1000)
+default_radius: 1000
+
+# Default language for the bot (default: "en")
+# Supported: "en", "zh-tw", "ja", "ko"
+default_language: "en"
+
+# Whether the bot is enabled (default: true)
+enabled: true

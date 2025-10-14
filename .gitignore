@@ -365,3 +365,12 @@ $RECYCLE.BIN/
 
 # Windows shortcuts
 *.lnk
+
+### Project Specific ###
+# Database files
+*.db
+*.db-journal
+
+# Bot configuration files (keep examples only)
+bots/*.yaml
+!bots/*.example

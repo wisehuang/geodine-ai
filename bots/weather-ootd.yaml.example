@@ -1,0 +1,36 @@
+# Weather OOTD Bot Configuration
+# This bot provides weather information and outfit recommendations
+
+# Unique identifier for the bot
+bot_id: "weather-ootd"
+
+# Human-readable name
+name: "Weather OOTD Bot"
+
+# LINE channel credentials
+# You can use environment variables by wrapping them in ${VAR_NAME}
+channel_access_token: "${WEATHER_OOTD_ACCESS_TOKEN}"
+channel_secret: "${WEATHER_OOTD_SECRET}"
+
+# Description
+description: "Weather forecast and outfit recommendation bot"
+
+# Custom webhook path (optional, defaults to /line/{bot_id}/webhook)
+webhook_path: "/line/weather-ootd/webhook"
+
+# Bot type - determines which handler to use
+bot_type: "weather"
+
+# Weather bot doesn't need AI parsing for restaurant searches
+use_ai_parsing: false
+
+# Default location settings
+default_radius: 1000
+default_language: "en"
+
+# Whether the bot is enabled
+enabled: true
+
+# Custom image generation prompt template
+# Available variables: {weather_description}, {temperature}, {conditions}
+image_prompt_template: "根據今天台北的天氣，產生一個女生的穿著的圖，照描述製作出新的圖片: 高精細日系動畫風（highly detailed Japanese anime style） 角色五官精緻、眼睛大而有神，頭髮線條細膩。頭身比約 9：1（即全身高度約為頭部高度的 9倍） 腿部特別修長，約佔全身高度一半以上。 頭部縮小，髮色維持照片中的髮色，腰部纖細，肩膀適中，整體線條流暢。手臂細長。強調光影、subtle yet clear、維持原本構圖。臉型小巧，下巴尖，眼睛大。色彩明亮自然，光影寫實，背景細節豐富，背景在室外的台北街頭，具現實感，畫面氛圍清新、溫暖、青春洋溢。天氣狀況：{weather_description}，溫度：{temperature}，{conditions}"
