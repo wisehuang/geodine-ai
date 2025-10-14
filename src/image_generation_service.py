@@ -30,7 +30,7 @@ class ImageGenerationService:
         weather_data: dict = None,
         weather_context: str = None,
         custom_prompt: str = None,
-        model: str = "dall-e-3",
+        model: str = "gpt-image-1",
         size: str = "1024x1024",
         quality: str = "standard"
     ) -> Optional[str]:
@@ -42,7 +42,7 @@ class ImageGenerationService:
             weather_context: Legacy parameter - Weather condition description (e.g., "cold weather, rainy")
             custom_prompt: Optional custom prompt template with variables:
                           {weather_description}, {temperature}, {conditions}
-            model: DALL-E model to use ("dall-e-3" or "dall-e-2")
+            model: Image model to use ("gpt-image-1", "dall-e-3" or "dall-e-2")
             size: Image size ("1024x1024", "1792x1024", or "1024x1792" for dall-e-3)
             quality: Image quality ("standard" or "hd" for dall-e-3)
 
