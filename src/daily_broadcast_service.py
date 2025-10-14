@@ -197,11 +197,11 @@ class DailyBroadcastService:
             # Get custom prompt from bot configuration
             custom_prompt = self.bot_instance.config.image_prompt_template
 
-            # Generate image using DALL-E 3
+            # Generate image using gpt-image-1
             image_url = self.image_service.generate_outfit_image(
                 weather_data=weather_data,
                 custom_prompt=custom_prompt,
-                model="dall-e-3",
+                model="gpt-image-1",
                 quality="standard"
             )
 
