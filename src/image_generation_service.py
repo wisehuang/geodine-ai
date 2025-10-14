@@ -2,7 +2,10 @@
 Image generation service using OpenAI Images API
 """
 import os
+import base64
 import requests
+import uuid
+from pathlib import Path
 from typing import Optional
 from dotenv import load_dotenv
 
@@ -25,6 +28,10 @@ class ImageGenerationService:
             "Content-Type": "application/json"
         }
 
+        # Create directory for storing generated images
+        self.images_dir = Path("generated_images")
+        self.images_dir.mkdir(exist_ok=True)
+
     def generate_outfit_image(
         self,
         weather_data: dict = None,
@@ -32,7 +39,7 @@ class ImageGenerationService:
         custom_prompt: str = None,
         model: str = "gpt-image-1",
         size: str = "1024x1024",
-        quality: str = "standard"
+        quality: str = "auto"
     ) -> Optional[str]:
         """
         Generate an outfit recommendation image based on weather conditions
@@ -73,9 +80,19 @@ class ImageGenerationService:
             "size": size
         }
 
-        # Add quality parameter only for dall-e-3
+        # Add quality parameter (dall-e-3 uses "hd"/"standard", gpt-image-1 uses "high"/"medium"/"low"/"auto")
         if model == "dall-e-3":
+            # Map to dall-e-3 quality values
+            if quality in ["high", "hd"]:
+                payload["quality"] = "hd"
+            else:
+                payload["quality"] = "standard"
+        elif model == "gpt-image-1":
             payload["quality"] = quality
+
+        # gpt-image-1 always returns base64, dall-e-2/3 can return URLs
+        if model in ["dall-e-2", "dall-e-3"]:
+            payload["response_format"] = "url"
 
         try:
             print(f"Generating image with prompt: {prompt}")
@@ -92,9 +109,32 @@ class ImageGenerationService:
             data = response.json()
 
             if "data" in data and len(data["data"]) > 0:
-                image_url = data["data"][0]["url"]
-                print(f"Image generated successfully: {image_url}")
-                return image_url
+                image_data = data["data"][0]
+
+                # gpt-image-1 returns base64, dall-e-2/3 return URL
+                if "url" in image_data:
+                    image_url = image_data["url"]
+                    print(f"Image generated successfully (URL): {image_url}")
+                    return image_url
+                elif "b64_json" in image_data:
+                    # For gpt-image-1, save the base64 image locally and return file path
+                    b64_data = image_data["b64_json"]
+
+                    # Generate unique filename
+                    filename = f"{uuid.uuid4()}.png"
+                    filepath = self.images_dir / filename
+
+                    # Decode and save
+                    image_bytes = base64.b64decode(b64_data)
+                    with open(filepath, "wb") as f:
+                        f.write(image_bytes)
+
+                    print(f"Image generated successfully (base64, saved to: {filepath})")
+                    # Return relative path that can be served by FastAPI
+                    return f"/generated_images/{filename}"
+                else:
+                    print(f"Unexpected response format: {data}")
+                    return None
             else:
                 print(f"Unexpected response format: {data}")
                 return None

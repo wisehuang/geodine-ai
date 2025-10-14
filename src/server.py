@@ -1,8 +1,10 @@
 import os
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 from fastapi_mcp import FastApiMCP
 from dotenv import load_dotenv
 import uvicorn
+from pathlib import Path
 
 from src.line_bot import router as line_router
 from src.restaurant_finder import router as restaurant_router
@@ -20,6 +22,13 @@ app = FastAPI(
     title="GeoDine-AI Multi-Bot Platform",
     description="Multi-bot LINE platform for restaurant finding and weather outfit recommendations"
 )
+
+# Create generated_images directory if it doesn't exist
+images_dir = Path("generated_images")
+images_dir.mkdir(exist_ok=True)
+
+# Mount static files for serving generated images
+app.mount("/generated_images", StaticFiles(directory="generated_images"), name="generated_images")
 
 # Register routers
 app.include_router(line_router)

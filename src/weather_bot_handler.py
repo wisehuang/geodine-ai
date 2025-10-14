@@ -2,6 +2,7 @@
 Weather OOTD Bot message handlers
 Refactored to use clean architecture with base handler
 """
+import os
 from linebot.models import (
     MessageEvent, TextMessage, LocationMessage,
     TextSendMessage, ImageSendMessage
@@ -175,20 +176,29 @@ class WeatherBotHandler(BaseLineHandler):
             custom_prompt = self.bot_instance.config.image_prompt_template
 
             # Use gpt-image-1 model
-            image_url = image_service.generate_outfit_image(
+            image_url_or_path = image_service.generate_outfit_image(
                 weather_data=weather_data,
                 custom_prompt=custom_prompt,
                 model="gpt-image-1",
-                quality="standard"
+                quality="auto"
             )
 
-            if image_url:
+            if image_url_or_path:
+                # Convert relative path to full URL if needed
+                if image_url_or_path.startswith("/generated_images/"):
+                    # Get server URL from environment or use default
+                    server_url = os.getenv("SERVER_URL", "https://your-server-url.com")
+                    full_url = f"{server_url}{image_url_or_path}"
+                else:
+                    # Already a full URL (dall-e-2/3)
+                    full_url = image_url_or_path
+
                 # Send the generated image
                 self.api.push_message(
                     user_id,
                     ImageSendMessage(
-                        original_content_url=image_url,
-                        preview_image_url=image_url
+                        original_content_url=full_url,
+                        preview_image_url=full_url
                     )
                 )
 

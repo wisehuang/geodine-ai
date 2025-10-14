@@ -4,6 +4,7 @@ Daily Weather Broadcast Service
 This service handles the daily broadcast of weather-based outfit recommendations
 to all Weather OOTD bot subscribers. Designed to be called via cron job.
 """
+import os
 import time
 from typing import List, Dict, Any, Optional
 from linebot.models import TextSendMessage, ImageSendMessage
@@ -116,15 +117,22 @@ class DailyBroadcastService:
 
                 # Generate outfit image (this may take time)
                 print(f"[Broadcast] Generating image for user {line_user_id}...")
-                image_url = self._generate_outfit_image(weather_data)
+                image_url_or_path = self._generate_outfit_image(weather_data)
 
-                if image_url:
+                if image_url_or_path:
+                    # Convert relative path to full URL if needed
+                    if image_url_or_path.startswith("/generated_images/"):
+                        server_url = os.getenv("SERVER_URL", "https://your-server-url.com")
+                        full_url = f"{server_url}{image_url_or_path}"
+                    else:
+                        full_url = image_url_or_path
+
                     # Send the generated image
                     self.bot_instance.api.push_message(
                         line_user_id,
                         ImageSendMessage(
-                            original_content_url=image_url,
-                            preview_image_url=image_url
+                            original_content_url=full_url,
+                            preview_image_url=full_url
                         )
                     )
 
@@ -202,7 +210,7 @@ class DailyBroadcastService:
                 weather_data=weather_data,
                 custom_prompt=custom_prompt,
                 model="gpt-image-1",
-                quality="standard"
+                quality="auto"
             )
 
             return image_url

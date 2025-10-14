@@ -374,3 +374,6 @@ $RECYCLE.BIN/
 # Bot configuration files (keep examples only)
 bots/*.yaml
 !bots/*.example
+
+# Generated images from gpt-image-1
+generated_images/
