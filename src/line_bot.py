@@ -46,7 +46,7 @@ def create_webhook_endpoint(bot_id: str, webhook_path: str):
 
     async def webhook_handler(
         request: Request,
-        x_line_signature: Optional[str] = Header(None)
+        x_line_signature: Optional[str] = Header(None, alias="X-Line-Signature")
     ):
         """
         Handle webhook events from the LINE platform for a specific bot
