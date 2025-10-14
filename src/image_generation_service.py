@@ -38,7 +38,7 @@ class ImageGenerationService:
         weather_context: str = None,
         custom_prompt: str = None,
         model: str = "gpt-image-1",
-        size: str = "1024x1024",
+        size: str = "1024x1536",
         quality: str = "auto"
     ) -> Optional[str]:
         """
