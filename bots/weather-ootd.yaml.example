@@ -33,4 +33,4 @@ enabled: true
 
 # Custom image generation prompt template
 # Available variables: {weather_description}, {temperature}, {conditions}
-image_prompt_template: "根據今天台北的天氣，產生一個女生的穿著的圖，照描述製作出新的圖片: 高精細日系動畫風（highly detailed Japanese anime style） 角色五官精緻、眼睛大而有神，頭髮線條細膩。頭身比約 9：1（即全身高度約為頭部高度的 9倍） 腿部特別修長，約佔全身高度一半以上。 頭部縮小，髮色維持照片中的髮色，腰部纖細，肩膀適中，整體線條流暢。手臂細長。強調光影、subtle yet clear、維持原本構圖。臉型小巧，下巴尖，眼睛大。色彩明亮自然，光影寫實，背景細節豐富，背景在室外的台北街頭，具現實感，畫面氛圍清新、溫暖、青春洋溢。天氣狀況：{weather_description}，溫度：{temperature}，{conditions}"
+image_prompt_template: "根據今天的天氣，產生一個女生的穿著的圖，照描述製作出新的圖片: 高精細日系動畫風（highly detailed Japanese anime style），發揮你的創意，角色衣著與日本、韓國、台灣這三個國家隨機挑選其中一個的 style 搭配，角色五官精緻、眼睛大而有神，頭髮線條細膩。頭身比約 9：1（即全身高度約為頭部高度的 9倍） 腿部特別修長，約佔全身高度一半以上。 頭部縮小，髮色維持照片中的髮色，腰部纖細，肩膀適中，整體線條流暢。手臂細長。強調光影、subtle yet clear、維持原本構圖。臉型小巧，下巴尖，眼睛大。色彩明亮自然，光影寫實，背景細節豐富，背景在室外的台北街頭，並且與今日的天氣相符，具現實感，畫面氛圍清新、溫暖、青春洋溢。天氣狀況：{weather_description}，溫度：{temperature}，{conditions}"

@@ -8,44 +8,89 @@ A LINE Bot application for finding restaurants based on user requirements using 
 
 ## Features
 
-- **Multi-Bot Support**: Run multiple LINE bots from a single server with independent configurations
+### Core Platform
+- **Multi-Bot Support**: Run multiple independent LINE bots from a single server instance
+- **Flexible Configuration**: YAML-based bot configurations with environment variable support
+- **Multi-Tenancy**: Isolated user data per bot using SQLite database
+- **API Security**: Protected endpoints with API key authentication
+- **MCP Integration**: FastAPI-MCP server for advanced integrations
+- **Static File Serving**: Automated image hosting for generated content
+
+### Restaurant Finder Bot
 - **Natural Language Processing**: Parse user requests like "Find Japanese food near Central Park"
-- **AI-Powered Understanding**: Optional integration with OpenAI's GPT-4o for advanced language comprehension
-- **Location-Based Search**: Find restaurants near user's current location or specified places
+- **AI-Powered Understanding**: OpenAI GPT-4o integration for advanced language comprehension (optional)
+- **Location-Based Search**: Find restaurants near user's location or specified places
 - **Customizable Filters**: Search by cuisine type, price level, and operating status
 - **Interactive UI**: Rich visual responses with restaurant details using LINE Flex Messages
 - **Google Maps Integration**: Powered by Google Maps Places API for accurate restaurant data
-- **Multi-language Support**: Automatic language detection and translation for user messages
-- **Persistent Storage**: SQLite database for storing user locations and preferences per bot
-- **API Security**: Protected endpoints with API key authentication
-- **Flexible Configuration**: YAML-based bot configurations with environment variable support
+- **Multi-language Support**: Automatic language detection and translation (English, Chinese, Japanese, Korean)
+- **Dual Parsing Modes**: Choose between regex-based or AI-powered request parsing
+
+### Weather OOTD Bot
+- **Weather Forecasts**: Real-time weather data from Open-Meteo API (no API key required)
+- **AI Outfit Recommendations**: DALL-E 3 generated outfit images based on weather conditions
+- **Location-Aware**: Personalized forecasts for user location or defaults to Taipei, Taiwan
+- **Beautiful Visuals**: Weather emojis and professionally styled images
+- **Daily Broadcasts**: Automated daily weather + outfit messages via cron jobs
+- **Custom Prompts**: Configurable image generation prompts with weather variable substitution
+- **Rate Limiting**: Built-in delays to respect LINE API limits
 
 ## Architecture
 
 ![Sequence Diagram](GeoDine-AI%20Sequence%20Diagram.png)
 
-The application consists of several key components:
+The application uses a **factory pattern with singleton registry** for managing multiple independent LINE bots:
 
-- **LINE Bot (line_bot.py)**: Dynamically registers webhook endpoints for multiple bots
-- **Bot Configuration (bot_config.py)**: Manages bot configurations from YAML files
-- **Bot Registry (bot_registry.py)**: Factory pattern for managing multiple bot instances
-- **Bot Handlers (line_bot_handler.py)**: Core message handling logic for all bots
-- **Restaurant Finder (restaurant_finder.py)**: Interfaces with Google Maps API to find restaurants
-- **Utils (utils.py)**: Provides text parsing capabilities with regex and/or OpenAI
-- **Translation (translation.py)**: Handles language detection and translation using OpenAI
-- **Language Pack (language_pack.py)**: Contains localized strings and messages
-- **Database (database.py)**: Manages SQLite database operations with multi-bot support
-- **Security (security.py)**: Handles API authentication and security
-- **Server (server.py)**: FastAPI application that brings everything together
+```
+FastAPI Server (server.py)
+    ↓
+LINE Bot Router (line_bot.py) - Dynamic endpoint registration
+    ↓
+Bot Registry (bot_registry.py) - Singleton factory managing bot instances
+    ↓
+Bot Instances - Each with independent LINE API clients
+    ↓
+Handler Selection - Routes to appropriate handler based on bot_type
+    ├─ Restaurant Bot Handler (line_bot_handler.py)
+    └─ Weather Bot Handler (weather_bot_handler.py)
+```
+
+### Key Components
+
+**Core System:**
+- **server.py**: FastAPI application with MCP integration and static file serving
+- **line_bot.py**: Dynamic webhook endpoint registration for multiple bots
+- **bot_config.py**: YAML-based configuration management with environment variable substitution
+- **bot_registry.py**: Singleton factory pattern for bot instance management
+- **database.py**: SQLite database with multi-bot support and data isolation
+- **security.py**: API key authentication and LINE signature verification
+- **broadcast_router.py**: Daily broadcast endpoints for automated messaging
+
+**Restaurant Bot:**
+- **line_bot_handler.py**: Message handling and response logic
+- **restaurant_finder.py**: Google Maps Places API integration
+- **utils.py**: Request parsing (regex or OpenAI function calling)
+- **translation.py**: Language detection and translation using OpenAI
+- **language_pack.py**: Localized strings and messages
+
+**Weather Bot:**
+- **weather_bot_handler.py**: Weather bot message handling with event deduplication
+- **weather_service.py**: Open-Meteo API integration for weather data
+- **image_generation_service.py**: OpenAI DALL-E 3 direct REST API calls
+- **daily_broadcast_service.py**: Automated daily broadcast service with rate limiting
 
 ## Installation
 
 ### Prerequisites
 
 - Python 3.8+
-- LINE Developer Account
-- Google Maps API Key
-- OpenAI API Key (required for translation and optional for parsing)
+- LINE Developer Account (for each bot)
+- **For Restaurant Bot:**
+  - Google Maps API Key
+  - OpenAI API Key (for translation and optional AI parsing)
+- **For Weather Bot:**
+  - OpenAI API Key (for DALL-E 3 image generation)
+  - No weather API key needed (uses free Open-Meteo API)
 
 ### Setup
 
@@ -61,7 +106,7 @@ The application consists of several key components:
    ```
 
 3. Create a `.env` file in the project root with your credentials. You can use `.env.example` as a template:
-   ```
+   ```env
    # Server Configuration
    HOST=0.0.0.0
    PORT=8000
@@ -71,15 +116,23 @@ The application consists of several key components:
    OPENAI_API_KEY=your_openai_api_key_here
    API_KEY=your_generated_api_key_here  # Generate with: openssl rand -hex 32
 
-   # LINE Bot Configuration
+   # Legacy Single Bot Support (optional - creates bot_id "geodine-ai")
    LINE_CHANNEL_ACCESS_TOKEN=your_line_channel_access_token_here
    LINE_CHANNEL_SECRET=your_line_channel_secret_here
 
+   # Per-Bot Credentials (referenced in YAML configs)
+   MY_BOT_ACCESS_TOKEN=your_bot_token
+   MY_BOT_SECRET=your_bot_secret
+   WEATHER_OOTD_ACCESS_TOKEN=your_weather_bot_token
+   WEATHER_OOTD_SECRET=your_weather_bot_secret
+
    # Feature Flags
-   USE_AI_PARSING=true  # Set to false to use regex-based parsing
+   USE_AI_PARSING=true  # Global default, can be overridden per bot in YAML
    ```
 
    > **Important**: Never commit your `.env` file to version control.
+
+4. Create bot configuration files in the `bots/` directory (see examples in `bots/*.yaml.example`)
 
 ## Running the Application
 
@@ -140,7 +193,30 @@ The server will automatically:
 
 ### Bot Configuration Options
 
-See `bots/README.md` for detailed configuration options and examples.
+Configuration fields for bot YAML files:
+
+**Required:**
+- `bot_id`: Unique identifier (used in URLs and database)
+- `name`: Human-readable name
+- `channel_access_token`: LINE channel access token
+- `channel_secret`: LINE channel secret
+
+**Optional:**
+- `bot_type`: `"restaurant"` (default) or `"weather"`
+- `webhook_path`: Custom webhook path (defaults to `/line/{bot_id}/webhook`)
+- `description`: Human-readable description
+- `use_ai_parsing`: `true` (default) or `false` - Use OpenAI for parsing (restaurant bot only)
+- `default_radius`: Search radius in meters (default: 1000)
+- `default_language`: Default language code (default: "en")
+- `enabled`: `true` (default) or `false` - Enable/disable bot
+- `image_prompt_template`: Custom DALL-E 3 prompt (weather bot only)
+
+**Weather Bot Prompt Variables:**
+- `{weather_description}`: English weather condition
+- `{temperature}`: Temperature range
+- `{conditions}`: Chinese weather analysis
+
+See `bots/README.md` and example files for detailed configuration options.
 
 ### Managing Existing Bots
 
@@ -258,21 +334,25 @@ The application flows in two main paths:
 
 ## Supported Languages
 
-The bot currently supports:
+The Restaurant Bot supports automatic language detection and translation for:
 - English (en)
 - Traditional Chinese (zh-tw)
 - Japanese (ja)
 - Korean (ko)
 
+The Weather Bot provides forecasts and outfit recommendations in English with Chinese weather condition descriptions.
+
 ## Weather OOTD Bot
 
-In addition to restaurant finding, the project includes a Weather OOTD (Outfit of the Day) bot:
+The Weather OOTD (Outfit of the Day) bot provides weather forecasts with AI-generated outfit recommendations.
 
 ### Features
-- 🌤️ **Weather Forecasts** - Real-time weather data from Open-Meteo API
-- 👔 **AI Outfit Recommendations** - DALL-E generated outfit images
-- 📍 **Location-Based** - Personalized for user location or defaults to Taipei
-- 🎨 **Beautiful Visuals** - Weather emojis and styled images
+- 🌤️ **Weather Forecasts**: Real-time weather data from Open-Meteo API (no API key required)
+- 👔 **AI Outfit Recommendations**: DALL-E 3 generated outfit images based on current weather
+- 📍 **Location-Based**: Personalized for user location or defaults to Taipei, Taiwan
+- 🎨 **Beautiful Visuals**: Weather emojis and professionally styled images
+- 🔔 **Daily Broadcasts**: Automated morning messages via cron jobs
+- ⚙️ **Customizable Prompts**: Configure image generation prompts with weather variables
 
 ### Quick Setup
 
@@ -281,46 +361,80 @@ In addition to restaurant finding, the project includes a Weather OOTD (Outfit o
    cp bots/weather-ootd.yaml.example bots/weather-ootd.yaml
    ```
 
-2. **Add credentials to `.env`:**
+2. **Edit the configuration** to customize the image prompt template:
+   ```yaml
+   bot_id: "weather-ootd"
+   name: "Weather OOTD Bot"
+   channel_access_token: "${WEATHER_OOTD_ACCESS_TOKEN}"
+   channel_secret: "${WEATHER_OOTD_SECRET}"
+   bot_type: "weather"
+   enabled: true
+   image_prompt_template: "Your custom prompt with {weather_description}, {temperature}, {conditions}"
+   ```
+
+3. **Add credentials to `.env`:**
    ```env
    WEATHER_OOTD_ACCESS_TOKEN=your_token
    WEATHER_OOTD_SECRET=your_secret
    OPENAI_API_KEY=your_openai_key
    ```
 
-3. **Restart server**
+4. **Restart server**
 
-4. **Configure webhook:** `https://your-domain.com/line/weather-ootd/webhook`
+5. **Configure webhook in LINE Developer Console:**
+   - Webhook URL: `https://your-domain.com/line/weather-ootd/webhook`
 
-### Usage
-- Send "hi" or "help" for instructions
-- Send "weather" for current weather
-- Send "outfit" for outfit recommendation
-- Share location for personalized results
+### User Commands
+- `hi`, `hello`, `help`: Display welcome message with instructions
+- `weather`: Get current weather forecast
+- `outfit`, `ootd`: Generate AI outfit recommendation based on weather
+- **Share location**: Save location for personalized forecasts
 
 ### Daily Automated Broadcasts
-- **Automated Daily Messages**: Schedule daily weather & outfit broadcasts to all subscribers via cron jobs
-- **Rate Limiting**: Built-in delays to respect LINE API limits
-- **Test Mode**: Test broadcasts before scheduling
 
-**Setup Daily Broadcasts:**
+Schedule automated daily weather + outfit messages to all subscribers:
+
+**Test Broadcast:**
 ```bash
-# Test broadcast to a single user
 curl -X POST "http://localhost:8000/broadcast/test" \
   -H "X-API-Key: your_api_key" \
   -H "Content-Type: application/json" \
   -d '{"bot_id": "weather-ootd", "test_user_id": "YOUR_LINE_USER_ID"}'
+```
 
-# Schedule daily broadcast at 7 AM (add to crontab)
+**Check Status:**
+```bash
+curl -X GET "http://localhost:8000/broadcast/status/weather-ootd" \
+  -H "X-API-Key: your_api_key"
+```
+
+**Schedule Daily Broadcast (crontab):**
+```bash
+# Daily at 7 AM
 0 7 * * * curl -X POST "http://localhost:8000/broadcast/daily-weather" \
   -H "X-API-Key: your_api_key" \
   -H "Content-Type: application/json" \
   -d '{"bot_id": "weather-ootd"}' >> /var/log/weather-broadcast.log 2>&1
 ```
 
+**Important Notes:**
+- Image generation takes ~5-10 seconds per user
+- Built-in rate limiting prevents LINE API throttling
+- For 100 subscribers: ~8-15 minutes total broadcast time
+- Individual errors don't stop the broadcast
+
+### Technical Details
+
+- **Weather Data**: Open-Meteo API (free, no key required)
+- **Image Generation**: OpenAI DALL-E 3 via direct REST API
+- **Default Location**: Taipei, Taiwan (25.01°N, 121.46°E)
+- **Event Deduplication**: Prevents duplicate processing within 5 minutes
+- **Reply Token Fallback**: Automatically uses push messages if reply token expires
+
 **Full Documentation:**
-- Weather Bot Setup: [WEATHER_BOT_SETUP.md](WEATHER_BOT_SETUP.md)
-- Daily Broadcasts: [DAILY_BROADCAST_SETUP.md](DAILY_BROADCAST_SETUP.md)
+- Complete Setup Guide: [WEATHER_BOT_SETUP.md](WEATHER_BOT_SETUP.md)
+- Daily Broadcast Setup: [DAILY_BROADCAST_SETUP.md](DAILY_BROADCAST_SETUP.md)
+- Custom Prompts: [CUSTOM_PROMPT_GUIDE.md](CUSTOM_PROMPT_GUIDE.md)
 
 ## Upgrading from Single Bot to Multi-Bot
 
