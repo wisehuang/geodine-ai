@@ -209,7 +209,7 @@ class DailyBroadcastService:
             image_url = self.image_service.generate_outfit_image(
                 weather_data=weather_data,
                 custom_prompt=custom_prompt,
-                model="gpt-image-1",
+                model="gpt-image-1.5",
                 quality="auto"
             )
 
