@@ -3,6 +3,7 @@ Weather OOTD Bot message handlers
 Refactored to use clean architecture with base handler
 """
 import os
+import time
 from linebot.models import (
     MessageEvent, TextMessage, LocationMessage,
     TextSendMessage, ImageSendMessage
@@ -15,6 +16,13 @@ from src.bot_registry import BotInstance
 from src.handlers.base_handler import BaseLineHandler
 
 
+# Minimum seconds between image generations per user (limits OpenAI cost abuse)
+try:
+    OUTFIT_COOLDOWN_SECONDS = max(0, int(os.getenv("OUTFIT_COOLDOWN_SECONDS", "60")))
+except ValueError:
+    OUTFIT_COOLDOWN_SECONDS = 60
+
+
 class WeatherBotHandler(BaseLineHandler):
     """
     Handler for weather OOTD bot.
@@ -24,6 +32,7 @@ class WeatherBotHandler(BaseLineHandler):
     def __init__(self, bot_instance: BotInstance):
         """Initialize weather bot handler"""
         super().__init__(bot_instance)
+        self.last_outfit_time = {}  # Tracks last image generation time per user
 
     def handle_text_message(self, event):
         """Handle text messages for weather bot"""
@@ -130,6 +139,19 @@ class WeatherBotHandler(BaseLineHandler):
         show_confirmation: bool = True
     ):
         """Generate outfit recommendation based on weather and send to user"""
+        now = time.time()
+        last_generated = self.last_outfit_time.get(user_id)
+        if last_generated and now - last_generated < OUTFIT_COOLDOWN_SECONDS:
+            wait_seconds = int(OUTFIT_COOLDOWN_SECONDS - (now - last_generated)) + 1
+            cooldown_msg = TextSendMessage(text=f"⏳ Please wait {wait_seconds} seconds before requesting another outfit.")
+            if show_confirmation:
+                self.safe_reply_or_push(event, cooldown_msg)
+            else:
+                # Reply token already used by the caller, so push instead
+                self.api.push_message(user_id, cooldown_msg)
+            return
+        self.last_outfit_time[user_id] = now
+
         try:
             # Get user location from database
             location = get_user_location_for_search(user_id, self.bot_id)
@@ -157,6 +179,7 @@ class WeatherBotHandler(BaseLineHandler):
             weather_data = WeatherService.get_today_weather(latitude, longitude)
 
             if not weather_data:
+                self.last_outfit_time.pop(user_id, None)
                 error_msg = "❌ Unable to fetch weather data. Please try again later."
                 self.api.push_message(user_id, TextSendMessage(text=error_msg))
                 return
@@ -211,6 +234,7 @@ class WeatherBotHandler(BaseLineHandler):
                 self.api.push_message(user_id, TextSendMessage(text=follow_up))
             else:
                 # Image generation failed
+                self.last_outfit_time.pop(user_id, None)
                 error_msg = (
                     "❌ Unable to generate outfit image at the moment.\n"
                     "Please try again later or contact support."
@@ -219,7 +243,8 @@ class WeatherBotHandler(BaseLineHandler):
 
         except Exception as e:
             print(f"Error generating outfit recommendation: {e}")
-            error_msg = f"❌ An error occurred: {str(e)}\nPlease try again later."
+            self.last_outfit_time.pop(user_id, None)
+            error_msg = "❌ An error occurred. Please try again later."
             self.api.push_message(user_id, TextSendMessage(text=error_msg))
 
     def register_handlers(self):

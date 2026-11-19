@@ -215,7 +215,7 @@ class RestaurantBotHandler(BaseLineHandler):
             # Common message templates (will be translated as needed)
             messages = {
                 'no_results': "Sorry, I couldn't find any food or drink places matching your criteria.",
-                'error': "I encountered an error while searching: "
+                'error': "I encountered an error while searching. Please try again later."
             }
 
             # Search for food and drink establishments
@@ -264,7 +264,7 @@ class RestaurantBotHandler(BaseLineHandler):
         except Exception as e:
             print(f"Error searching places: {str(e)}")
 
-            error_message = translate_text(messages['error'], language) + str(e)
+            error_message = translate_text(messages['error'], language)
 
             self.api.push_message(
                 user_id,
@@ -299,7 +299,7 @@ class RestaurantBotHandler(BaseLineHandler):
                 "type": "bubble",
                 "hero": {
                     "type": "image",
-                    "url": restaurant.get("photo_url", "https://via.placeholder.com/300x200"),
+                    "url": restaurant.get("photo_url") or "https://via.placeholder.com/300x200",
                     "size": "full",
                     "aspectRatio": "20:13",
                     "aspectMode": "cover"
