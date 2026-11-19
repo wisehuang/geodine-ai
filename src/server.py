@@ -39,7 +39,8 @@ app.include_router(broadcast_router)
 mcp = FastApiMCP(
     app,
     name="Restaurant Finder MCP",
-    description="MCP server for restaurant finding with LINE integration"
+    description="MCP server for restaurant finding with LINE integration",
+    include_operations=["search_restaurants", "get_place_photo"]
 )
 
 # Mount MCP server
@@ -50,5 +51,5 @@ if __name__ == "__main__":
         "src.server:app",
         host=host,
         port=int(port),
-        reload=True
+        reload=os.getenv("RELOAD", "false").lower() == "true"
     )
